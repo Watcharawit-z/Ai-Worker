@@ -1,0 +1,75 @@
+# โหมดสาธิต — เร่งเวลาทุกอย่างให้เร็วขึ้นสิบเท่า
+# ใช้ดูว่าระบบตัดสินใจยังไงภายในไม่กี่นาที แทนที่จะต้องรอทั้งกะ
+#
+#   python -m aiworker --config config/demo.yaml --minutes 3
+#
+# อย่าเอาค่าพวกนี้ไปใช้จริง — ตะกร้าจะเปลี่ยนเร็วเกินจนคนดูงง
+
+shop:
+  name: "ร้านตัวอย่าง (โหมดสาธิต)"
+  channel_id: "demo"
+  tone: "สุภาพ เป็นกันเอง ลงท้ายด้วยค่ะ"
+  shipping_note: "ส่งภายใน 1-2 วันทำการ มีเก็บเงินปลายทาง"
+  return_policy: "เปลี่ยน/คืนภายใน 7 วัน"
+
+llm:
+  model: "claude-opus-5"
+  effort: "low"
+  max_tokens: 1500
+
+comments:
+  batch_seconds: 3.0
+  max_batch: 8
+  max_replies_per_batch: 3
+  min_confidence_to_send: 0.6
+  cooldown_per_user_seconds: 10
+  max_reply_chars: 120
+
+compliance:
+  llm_review_interval_seconds: 30
+  auto_switch_segment_at: "high"
+  auto_stop_at: "critical"
+  banned_words: ["ของก๊อป"]
+
+baskets:
+  min_minutes_per_basket: 0.5     # ปกติ 20
+  evaluate_after_minutes: 1.0     # ปกติ 60
+  max_minutes_per_basket: 2.0     # ปกติ 90
+  min_orders_to_continue: 3
+  rotate_on_poor_performance: true
+
+ads:
+  enabled: true
+  starting_budget: 300
+  max_budget: 3000
+  scale_step: 1.5
+  target_roas: 3.0
+  kill_roas: 1.2
+  min_spend_before_judging: 10    # ปกติ 150
+  check_interval_seconds: 10
+
+stream:
+  health_interval_seconds: 3
+  stall_alert_after_seconds: 10
+  segment_min_seconds: 15         # ปกติ 120
+  shuffle_segments: true
+  avoid_repeat_within: 3
+
+adapters:
+  comments: mock
+  player: mock
+  shop: mock
+  ads: mock
+  notify: [console]
+  options:
+    mock_comments:
+      rate_per_minute: 120        # คอมเมนท์ถล่มเข้ามา ดูว่าระบบรับไหวไหม
+
+web:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8765
+
+products_path: "config/knowledge/products.yaml"
+baskets_path: "config/baskets.yaml"
+segments_path: "config/segments.yaml"

@@ -1,0 +1,78 @@
+# คลังท่อนวิดีโอสำหรับรีรัน — นี่คือ "ชิ้นจิ๊กซอว์"
+#
+# วิธีเตรียม: อัดไลฟ์จริงไว้ แล้วตัดเป็นท่อน ๆ ท่อนละ 3-8 นาที
+# ท่อนไหนพูดถึงสินค้าตัวไหน ใส่ sku ให้ตรงกัน
+# ระบบจะเลือกท่อนที่ตรงกับตะกร้าที่ขึ้นอยู่โดยอัตโนมัติ
+#
+# sku ว่าง = ท่อนกลาง (ทักทาย/เล่นเกม/ตอบคำถามทั่วไป) ใช้แทรกได้ทุกช่วง
+# weight    = ท่อนที่ขายดีตั้งค่าสูงไว้ ระบบจะหยิบบ่อยขึ้น (ค่าปกติ 1.0)
+#
+# เคล็ดลับกันคนดูจับได้ว่าเป็นรีรัน:
+#   1. มีท่อนกลางเยอะ ๆ ไว้แทรกสลับ
+#   2. อย่าให้ความยาวรวมต่ำกว่า 2-3 ชั่วโมงต่อกะ
+#   3. ตัดให้จบประโยคเสมอ อย่าตัดกลางคำ
+
+segments:
+  - id: seg001
+    path: "media/intro_greeting.mp4"
+    duration_seconds: 180
+    sku: ""
+    tags: [greeting]
+    weight: 0.8
+
+  - id: seg002
+    path: "media/sku001_demo_a.mp4"
+    duration_seconds: 300
+    sku: SKU-001
+    tags: [demo]
+    weight: 1.5
+
+  - id: seg003
+    path: "media/sku001_review.mp4"
+    duration_seconds: 240
+    sku: SKU-001
+    tags: [review]
+
+  - id: seg004
+    path: "media/sku002_demo.mp4"
+    duration_seconds: 280
+    sku: SKU-002
+    tags: [demo]
+
+  - id: seg005
+    path: "media/sku003_unbox.mp4"
+    duration_seconds: 420
+    sku: SKU-003
+    tags: [unbox]
+    weight: 2.0
+
+  - id: seg006
+    path: "media/sku004_swatch.mp4"
+    duration_seconds: 260
+    sku: SKU-004
+    tags: [swatch]
+
+  - id: seg007
+    path: "media/filler_qa.mp4"
+    duration_seconds: 200
+    sku: ""
+    tags: [qa, filler]
+    weight: 1.2
+
+  - id: seg008
+    path: "media/filler_chitchat.mp4"
+    duration_seconds: 220
+    sku: ""
+    tags: [filler]
+
+  - id: seg009
+    path: "media/sku005_demo.mp4"
+    duration_seconds: 240
+    sku: SKU-005
+    tags: [demo]
+
+  - id: seg010
+    path: "media/closing_push.mp4"
+    duration_seconds: 190
+    sku: ""
+    tags: [closing]

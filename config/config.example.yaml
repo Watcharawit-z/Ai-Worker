@@ -1,0 +1,89 @@
+# ตั้งค่าแผนกรีรันไลฟ์
+# แก้ไฟล์นี้ได้เลย ไม่มีความลับอยู่ในนี้ (API key อยู่ใน .env)
+
+shop:
+  name: "ร้านตัวอย่าง"
+  channel_id: "channel-01"
+  tone: "สุภาพ เป็นกันเอง ลงท้ายด้วยค่ะ ไม่ต้องทางการมาก"
+  shipping_note: "ส่งภายใน 1-2 วันทำการ มีเก็บเงินปลายทาง"
+  return_policy: "เปลี่ยน/คืนภายใน 7 วัน สินค้าต้องอยู่ในสภาพเดิม"
+
+llm:
+  model: "claude-opus-5"
+  effort: "medium"       # low = ถูกและเร็ว | medium = สมดุล | high = ฉลาดสุด
+  max_tokens: 2000
+  enabled: true          # ถ้าไม่มี ANTHROPIC_API_KEY ระบบจะปิดให้เองอัตโนมัติ
+
+comments:
+  batch_seconds: 4.0            # รวมคอมเมนท์กี่วินาทีค่อยส่งให้ AI ทีเดียว
+  max_batch: 12
+  max_replies_per_batch: 4      # ตอบมากกว่านี้ต่อรอบจะดูเป็นบอท
+  min_confidence_to_send: 0.6   # ต่ำกว่านี้ไม่ตอบ ส่งต่อให้คน
+  cooldown_per_user_seconds: 30 # กันตอบคนเดิมรัว ๆ
+  max_reply_chars: 120
+
+compliance:
+  check_interval_seconds: 20
+  llm_review_interval_seconds: 90   # ให้ AI อ่านบริบทย้อนหลังทุกกี่วินาที
+  auto_switch_segment_at: "high"    # เจอระดับนี้ → สลับท่อนวิดีโอทันที
+  auto_stop_at: "critical"          # เจอระดับนี้ → หยุดสตรีมและเรียกคน
+  banned_words:                     # เติมคำที่ร้านคุณห้ามพูดเอง
+    - "ของก๊อป"
+    - "เกรดเอ"
+  risky_claim_patterns: []          # regex เพิ่มเติม (ถ้าไม่ถนัดปล่อยว่างไว้)
+
+baskets:
+  queue_size: 10
+  min_minutes_per_basket: 20      # ยังไม่ถึงเวลานี้ ห้ามเปลี่ยนตะกร้า
+  evaluate_after_minutes: 60      # "สังเกตยอดขายภายใน 1 ชม." ตามสไลด์ → ตัดสินตอนนี้
+  max_minutes_per_basket: 90      # ถึงเพดานนี้เปลี่ยนแน่นอน ต้องมากกว่าค่าประเมินข้างบน
+  min_orders_to_continue: 3       # ได้น้อยกว่านี้ใน 1 ชม. = เปลี่ยนตะกร้า
+  rotate_on_poor_performance: true
+
+ads:
+  enabled: true
+  starting_budget: 300            # งบเริ่มต้นต่อตะกร้า (บาท)
+  max_budget: 3000
+  scale_step: 1.5                 # ติดแล้วคูณงบเท่าไหร่
+  target_roas: 3.0                # ถึงนี่ = สเกล
+  kill_roas: 1.2                  # ต่ำกว่านี้ = ปิดแอด
+  min_spend_before_judging: 150   # ใช้ยังไม่ถึงนี่ อย่าเพิ่งตัดสิน
+  check_interval_seconds: 60
+
+stream:
+  health_interval_seconds: 5
+  stall_alert_after_seconds: 15
+  min_bitrate_kbps: 800
+  max_dropped_frames: 300
+  segment_min_seconds: 120        # เล่นท่อนหนึ่งอย่างน้อยกี่วินาทีก่อนเปลี่ยน
+  shuffle_segments: true          # สุ่มลำดับ ทำให้ดูไม่เหมือนวนลูป
+  avoid_repeat_within: 3          # ห้ามซ้ำท่อนเดิมภายในกี่ท่อนล่าสุด
+
+adapters:
+  comments: mock      # mock | tiktok
+  player: mock        # mock | obs
+  shop: mock
+  ads: mock
+  notify: [console]   # console | telegram | webhook (ใส่หลายอันได้)
+  options:
+    obs:
+      host: "localhost"
+      port: 4455
+      password: ""          # ตั้งใน OBS: Tools → WebSocket Server Settings
+      scene: "RERUN"
+      media_source: "SEGMENT"
+    tiktok:
+      unique_id: "@your_account"
+    mock_comments:
+      rate_per_minute: 40   # จำลองคอมเมนท์เข้ากี่อันต่อนาที
+    telegram: {}            # อ่านจาก TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+    webhook: {}             # อ่านจาก NOTIFY_WEBHOOK_URL
+
+web:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8765
+
+products_path: "config/knowledge/products.yaml"
+baskets_path: "config/baskets.yaml"
+segments_path: "config/segments.yaml"

@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ห้องควบคุมพนักงาน AI</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --panel: #151922;
+    --panel-2: #1c212c;
+    --line: #262c3a;
+    --text: #e6e9ef;
+    --muted: #8b93a7;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --accent: #22d3ee;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Noto Sans Thai", sans-serif;
+    font-size: 14px; line-height: 1.55;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); font-weight: 600;
+             letter-spacing: .04em; text-transform: uppercase; }
+  .big { font-size: 26px; font-weight: 700; line-height: 1.2; }
+  .row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0;
+         border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row span:first-child { color: var(--muted); }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px;
+          font-size: 11px; font-weight: 600; }
+  .ok { background: rgba(52,211,153,.15); color: var(--ok); }
+  .warn { background: rgba(251,191,36,.15); color: var(--warn); }
+  .bad { background: rgba(248,113,113,.15); color: var(--bad); }
+  .log { max-height: 340px; overflow-y: auto; font-size: 12.5px; }
+  .log div { padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .log .who { color: var(--accent); font-weight: 600; }
+  .log .t { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .log .lvl-warn { color: var(--warn); }
+  .log .lvl-error { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 5px 6px;
+       border-bottom: 1px solid var(--line); }
+  td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  tr.live td { background: rgba(34,211,238,.08); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .wide { grid-column: 1 / -1; }
+  .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
+</style>
+</head>
+<body>
+<h1>ห้องควบคุมพนักงาน AI — แผนกรีรันไลฟ์</h1>
+<div class="sub" id="head">กำลังเชื่อมต่อ…</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>สถานะสตรีม</h2>
+    <div class="big" id="live-state">—</div>
+    <div id="stream-rows"></div>
+  </div>
+
+  <div class="card">
+    <h2>ตะกร้าที่กำลังไลฟ์</h2>
+    <div class="big" id="basket-name">—</div>
+    <div id="basket-rows"></div>
+  </div>
+
+  <div class="card">
+    <h2>คอมเมนท์</h2>
+    <div class="big" id="comment-count">0</div>
+    <div id="comment-rows"></div>
+  </div>
+
+  <div class="card">
+    <h2>แอด</h2>
+    <div class="big" id="roas">—</div>
+    <div id="ads-rows"></div>
+  </div>
+
+  <div class="card">
+    <h2>ความเสี่ยงผิดกฎ</h2>
+    <div class="big" id="strikes">0</div>
+    <div id="compliance-rows"></div>
+  </div>
+
+  <div class="card">
+    <h2>ค่าใช้จ่าย AI</h2>
+    <div class="big" id="ai-cost">$0</div>
+    <div id="llm-rows"></div>
+  </div>
+
+  <div class="card wide">
+    <h2>คิวตะกร้า</h2>
+    <table>
+      <thead><tr>
+        <th>#</th><th>สินค้า</th><th>สถานะ</th>
+        <th class="num">นาที</th><th class="num">ออเดอร์</th>
+        <th class="num">ยอดขาย</th><th class="num">ค่าแอด</th><th class="num">ROAS</th>
+      </tr></thead>
+      <tbody id="basket-table"></tbody>
+    </table>
+  </div>
+
+  <div class="card wide">
+    <h2>พนักงาน AI กำลังทำอะไร</h2>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+const fmt = n => new Intl.NumberFormat('th-TH').format(Math.round(n || 0));
+const time = ts => new Date(ts * 1000).toLocaleTimeString('th-TH', {hour12: false});
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function rows(el, pairs) {
+  document.getElementById(el).innerHTML = pairs
+    .map(([k, v]) => `<div class="row"><span>${esc(k)}</span><span>${v}</span></div>`)
+    .join('');
+}
+
+const STATE_LABEL = {queued: 'รอคิว', live: 'กำลังไลฟ์', done: 'จบแล้ว', skipped: 'ข้าม'};
+
+async function refresh() {
+  let d;
+  try {
+    d = await (await fetch('/api/state')).json();
+  } catch (e) {
+    document.getElementById('head').textContent = 'ขาดการเชื่อมต่อกับระบบ';
+    return;
+  }
+
+  const s = d.stream || {}, b = d.baskets || {}, c = d.comments || {},
+        ads = d.ads || {}, comp = d.compliance || {}, llm = d.llm || {};
+
+  document.getElementById('head').innerHTML =
+    `ช่อง <b>${esc(d.channel_id)}</b> · เข้ากะมาแล้ว ${fmt(d.uptime_minutes)} นาที · ` +
+    `ยอดรวม <b>${fmt(b.total_revenue)}฿</b> จาก ${fmt(b.total_orders)} ออเดอร์ · ` +
+    `อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH', {hour12: false})}`;
+
+  // สตรีม
+  const liveEl = document.getElementById('live-state');
+  liveEl.innerHTML = s.is_live
+    ? '<span class="pill ok">ออกอากาศอยู่</span>'
+    : '<span class="pill bad">จอดำ / ไม่ออกอากาศ</span>';
+  rows('stream-rows', [
+    ['คนดูตอนนี้', fmt(s.viewers)],
+    ['ท่อนที่เล่นอยู่', esc(s.current_segment) || '—'],
+    ['เหลืออีก', `${fmt(s.seconds_remaining)} วิ`],
+    ['bitrate', `${fmt(s.bitrate_kbps)} kbps`],
+    ['เฟรมตกสะสม', fmt(s.dropped_frames)],
+    ['เตือนล่าสุด', esc(s.last_alert) || '—'],
+  ]);
+
+  // ตะกร้า
+  const live = b.live;
+  document.getElementById('basket-name').textContent = live ? live.name : 'ยังไม่ขึ้นตะกร้า';
+  rows('basket-rows', live ? [
+    ['ลำดับคิว', `${b.position} / ${b.total}`],
+    ['ราคา', `${fmt(live.price)} ฿`],
+    ['ไลฟ์มาแล้ว', `${live.minutes_live} นาที`],
+    ['ออเดอร์', fmt(live.orders)],
+    ['ยอดขาย', `${fmt(live.revenue)} ฿`],
+    ['คิวถัดไป', (b.upcoming || []).map(x => esc(x.name)).join(' → ') || '—'],
+  ] : [['สถานะ', 'รอระบบขึ้นตะกร้าแรก']]);
+
+  // คอมเมนท์
+  document.getElementById('comment-count').textContent = fmt(c.received);
+  const answered = c.received ? Math.round((c.replied / c.received) * 100) : 0;
+  rows('comment-rows', [
+    ['ตอบไปแล้ว', fmt(c.replied)],
+    ['ส่งต่อให้คน', fmt(c.escalated)],
+    ['อัตราตอบอัตโนมัติ', `${answered}%`],
+  ]);
+
+  // แอด
+  const roasEl = document.getElementById('roas');
+  const roas = ads.roas || 0;
+  roasEl.textContent = roas ? `ROAS ${roas.toFixed(2)}` : 'ยังไม่มีข้อมูล';
+  roasEl.style.color = !roas ? 'var(--muted)' : roas >= 3 ? 'var(--ok)'
+    : roas >= 1.5 ? 'var(--warn)' : 'var(--bad)';
+  rows('ads-rows', [
+    ['แคมเปญ', esc(ads.campaign_id) || '—'],
+    ['งบตั้งไว้', `${fmt(ads.budget)} ฿`],
+    ['ใช้ไปแล้ว', `${fmt(ads.spend)} ฿`],
+    ['รายได้จากแอด', `${fmt(ads.revenue)} ฿`],
+    ['ต้นทุนต่อออเดอร์', ads.cpa ? `${fmt(ads.cpa)} ฿` : '—'],
+    ['สิ่งที่ทำล่าสุด', esc(ads.last_action) || '—'],
+  ]);
+
+  // ความเสี่ยง
+  const strikesEl = document.getElementById('strikes');
+  strikesEl.textContent = fmt(comp.strikes);
+  strikesEl.style.color = comp.strikes > 0 ? 'var(--warn)' : 'var(--ok)';
+  rows('compliance-rows', [
+    ['ระดับสูงสุดที่เจอ', esc(comp.worst_severity)],
+    ['หยุดไลฟ์อยู่หรือไม่', comp.paused
+      ? '<span class="pill bad">หยุดอยู่</span>'
+      : '<span class="pill ok">ปกติ</span>'],
+    ['เรื่องล่าสุด', esc(comp.last_violation) || '—'],
+  ]);
+
+  // ค่า AI
+  document.getElementById('ai-cost').textContent =
+    llm.enabled ? `$${(llm.estimated_cost_usd || 0).toFixed(3)}` : 'ปิดอยู่';
+  rows('llm-rows', [
+    ['โมเดล', esc(llm.model) || 'โหมดกฎล้วน'],
+    ['เรียกไปแล้ว', `${fmt(llm.calls)} ครั้ง`],
+    ['token เข้า', fmt(llm.input_tokens)],
+    ['token ที่ได้จาก cache', fmt(llm.cache_read_tokens)],
+    ['เรียกไม่สำเร็จ', fmt(llm.errors)],
+  ]);
+
+  // ตารางคิว
+  document.getElementById('basket-table').innerHTML = (b.all || []).map((x, i) => `
+    <tr class="${x.state === 'live' ? 'live' : ''}">
+      <td>${i + 1}</td>
+      <td>${esc(x.name)}</td>
+      <td>${STATE_LABEL[x.state] || esc(x.state)}</td>
+      <td class="num">${x.minutes_live}</td>
+      <td class="num">${fmt(x.orders)}</td>
+      <td class="num">${fmt(x.revenue)}</td>
+      <td class="num">${fmt(x.ad_spend)}</td>
+      <td class="num">${x.roas ? x.roas.toFixed(2) : '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="empty">ยังไม่มีตะกร้าในคิว</td></tr>';
+
+  // log
+  document.getElementById('log').innerHTML = (d.logs || []).slice().reverse().map(l =>
+    `<div><span class="t">${time(l.ts)}</span>` +
+    `<span class="who">${esc(l.agent)}</span> ` +
+    `<span class="lvl-${esc(l.level)}">${esc(l.message)}</span></div>`
+  ).join('') || '<div class="empty">ยังไม่มีบันทึก</div>';
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
