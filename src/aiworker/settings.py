@@ -53,24 +53,61 @@ class ComplianceSettings:
 
 @dataclass(slots=True)
 class BasketSettings:
-    queue_size: int = 10
-    min_minutes_per_basket: float = 20.0
-    max_minutes_per_basket: float = 90.0
-    evaluate_after_minutes: float = 60.0
-    min_orders_to_continue: int = 3
-    rotate_on_poor_performance: bool = True
+    """ตะกร้าเดินตามสิ่งที่คนในคลิปพูด ไม่ได้เดินตามเวลา"""
+
+    pin_check_seconds: float = 5.0
+    """เช็คบ่อยแค่ไหนว่าตะกร้าที่ปักตรงกับที่พูดอยู่หรือยัง"""
+
+    pin_lead_seconds: float = 2.0
+    """ปักล่วงหน้ากี่วินาทีก่อนถึงจังหวะที่พูดถึงสินค้าตัวใหม่"""
+
+    alert_on_missing_sku: bool = True
+    """คิวชี้ไปยังสินค้าที่ไม่มีในตะกร้า → เตือนคน"""
 
 
 @dataclass(slots=True)
 class AdsSettings:
+    """ไลฟ์นายหน้า — ต้นทุนต่อการซื้อคือตัวชี้ขาด ไม่ใช่ยอดขายรวม
+
+    แอดผูกกับ 'ไลฟ์' ไม่ได้ผูกกับ 'ตะกร้า'
+    เปลี่ยนตะกร้าไม่ต้องแตะแอด ขึ้นไลฟ์ใหม่ถึงจะขึ้นแอดใหม่
+    """
+
     enabled: bool = True
+    campaign_type: str = "gmv_max_live"
     starting_budget: float = 300.0
-    max_budget: float = 3000.0
-    scale_step: float = 1.5
-    target_roas: float = 3.0
-    kill_roas: float = 1.2
+    max_budget: float = 2000.0
+    scale_step: float = 1.3
+
+    max_cpa: float = 120.0
+    """ต้นทุนต่อการซื้อที่ยอมรับได้สูงสุด (บาท) — เกินนี้คือแอดแพง"""
+
+    target_cpa: float = 70.0
+    """ถูกกว่านี้ถือว่าคุ้ม สเกลได้"""
+
     min_spend_before_judging: float = 150.0
+    min_purchases_before_judging: int = 2
+    grace_minutes_after_launch: float = 20.0
+    """แอดเพิ่งขึ้น ตัวเลขยังไม่นิ่ง อย่าเพิ่งตัดสิน"""
+
+    relaunch_cooldown_minutes: float = 30.0
+    """ปิดแล้วขึ้นใหม่ได้เร็วสุดเท่าไหร่ กันขึ้น-ปิดวนไม่จบ"""
+
+    max_relaunches_per_live: int = 3
     check_interval_seconds: float = 60.0
+
+
+@dataclass(slots=True)
+class VerificationSettings:
+    """ปริศนายืนยันตัวตน (จิ๊กซอว์)"""
+
+    enabled: bool = True
+    machine_name: str = ""
+    deadline_seconds: float = 300.0
+    poll_seconds: float = 3.0
+    min_confidence: float = 0.6
+    watcher: str = "mock"
+    """mock | template — template ต้อง calibrate ก่อน"""
 
 
 @dataclass(slots=True)
@@ -102,6 +139,22 @@ class WebSettings:
 
 
 @dataclass(slots=True)
+class FleetSettings:
+    """คุมหลายเครื่องพร้อมกัน — เครื่องละ worker ส่งสถานะเข้า hub เดียว"""
+
+    role: str = "standalone"
+    """standalone | worker | hub"""
+
+    machine_name: str = ""
+    hub_url: str = ""
+    report_seconds: float = 5.0
+    hub_host: str = "0.0.0.0"
+    hub_port: int = 8700
+    offline_after_seconds: float = 30.0
+    """ไม่ได้ข่าวจากเครื่องไหนเกินนี้ = ถือว่าเครื่องนั้นหลุด"""
+
+
+@dataclass(slots=True)
 class Settings:
     shop: ShopSettings = field(default_factory=ShopSettings)
     llm: LLMSettings = field(default_factory=LLMSettings)
@@ -110,8 +163,10 @@ class Settings:
     baskets: BasketSettings = field(default_factory=BasketSettings)
     ads: AdsSettings = field(default_factory=AdsSettings)
     stream: StreamSettings = field(default_factory=StreamSettings)
+    verification: VerificationSettings = field(default_factory=VerificationSettings)
     adapters: AdapterSettings = field(default_factory=AdapterSettings)
     web: WebSettings = field(default_factory=WebSettings)
+    fleet: FleetSettings = field(default_factory=FleetSettings)
     products_path: str = "config/knowledge/products.yaml"
     baskets_path: str = "config/baskets.yaml"
     segments_path: str = "config/segments.yaml"
@@ -143,8 +198,10 @@ def load_settings(path: str | Path | None = None) -> Settings:
         baskets=_fill(BasketSettings, raw.get("baskets")),
         ads=_fill(AdsSettings, raw.get("ads")),
         stream=_fill(StreamSettings, raw.get("stream")),
+        verification=_fill(VerificationSettings, raw.get("verification")),
         adapters=_fill(AdapterSettings, raw.get("adapters")),
         web=_fill(WebSettings, raw.get("web")),
+        fleet=_fill(FleetSettings, raw.get("fleet")),
     )
     for key in ("products_path", "baskets_path", "segments_path"):
         if key in raw:

@@ -1,10 +1,15 @@
-"""พนักงานเฝ้าไลฟ์ — คนที่ต่อจิ๊กซอว์
+"""พนักงานเฝ้าไลฟ์ — คนที่นั่งดูจอทั้งกะ
 
 หน้าที่:
 1. เฝ้าสตรีมว่ายังไหลอยู่ไหม (bitrate/เฟรมตก/ค้าง)
-2. ต่อท่อนวิดีโอถัดไปก่อนท่อนปัจจุบันจะหมด — ห้ามให้จอดำแม้แต่วินาทีเดียว
-3. เลือกท่อนให้ตรงกับตะกร้าที่ขึ้นอยู่ และไม่ซ้ำจนคนดูจับได้
-4. สั่งสลับท่อน/หยุดสตรีม เมื่อฝ่ายตรวจการละเมิดสั่งมา
+2. ต่อคลิปถัดไปก่อนคลิปปัจจุบันจะหมด — ห้ามให้จอดำแม้แต่วินาทีเดียว
+3. สั่งสลับคลิป/หยุดสตรีม เมื่อฝ่ายตรวจการละเมิดสั่งมา
+
+หมายเหตุ: การปักตะกร้าไม่ได้อยู่ตรงนี้ — คลิปเป็นตัวกำหนดว่าจะปักอะไร
+ฝ่ายตะกร้าเป็นคนตามคลิป ไม่ใช่คลิปตามตะกร้า
+
+(ส่วน "ปริศนาจิ๊กซอว์" ที่ TikTok เด้งมาตรวจว่ามีคนเฝ้า อยู่ที่ verify_watcher
+ คนละเรื่องกับการต่อคลิปในไฟล์นี้)
 """
 
 from __future__ import annotations
@@ -13,7 +18,6 @@ import time
 
 from ..adapters.base import PlayerAdapter
 from ..events import (
-    BasketActivated,
     ComplianceAction,
     Event,
     SegmentChanged,
@@ -30,7 +34,7 @@ class LiveWatcherAgent(Agent):
     """แทน 'คนเฝ้าไลฟ์' ที่ต้องนั่งดูจอทั้งกะ"""
 
     name = "live_watcher"
-    subscribes = ("basket.activated", "compliance.action")
+    subscribes = ("compliance.action",)
 
     # เริ่มหาท่อนถัดไปก่อนท่อนปัจจุบันจบกี่วินาที
     PREROLL_SECONDS = 8.0
@@ -59,12 +63,7 @@ class LiveWatcherAgent(Agent):
     # ---------------- ตอบสนอง event ----------------
 
     async def handle(self, event: Event) -> None:
-        if isinstance(event, BasketActivated):
-            # ขึ้นตะกร้าใหม่ = ต้องสลับไปท่อนที่พูดถึงสินค้าตัวนั้น
-            await self._advance_segment(
-                reason=f"ขึ้นตะกร้าใหม่: {event.name}", sku=event.sku, force=True
-            )
-        elif isinstance(event, ComplianceAction):
+        if isinstance(event, ComplianceAction):
             await self._handle_compliance(event)
 
     async def _handle_compliance(self, event: ComplianceAction) -> None:
@@ -173,10 +172,7 @@ class LiveWatcherAgent(Agent):
     async def _advance_segment(
         self, *, reason: str, sku: str | None = None, force: bool = False
     ) -> None:
-        live_basket = self.state.baskets.live
-        target_sku = sku if sku is not None else (live_basket.sku if live_basket else None)
-
-        segment = self.state.playlist.next_segment(target_sku)
+        segment = self.state.playlist.next_segment(sku)
         if segment is None:
             self.say("ไม่มีท่อนวิดีโอให้เล่นต่อ — ต้องเติมคลิปด่วน", "error")
             self.notify(
@@ -195,6 +191,9 @@ class LiveWatcherAgent(Agent):
 
         self._segment_started_at = time.time()
         self.state.stream.current_segment = segment.id
+        self.state.stream.segment_started_at = self._segment_started_at
+        # ค่าจากตัวเล่นยังเป็นของท่อนเก่า ตั้งใหม่ทันทีไม่งั้นฝ่ายตะกร้าคำนวณตำแหน่งผิด
+        self.state.stream.seconds_remaining = segment.duration_seconds
         self.emit(
             SegmentChanged(from_segment=previous, to_segment=segment.id, reason=reason)
         )

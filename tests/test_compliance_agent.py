@@ -12,7 +12,7 @@ import pytest
 
 from aiworker.agents.compliance_agent import ComplianceAgent
 from aiworker.bus import EventBus
-from aiworker.domain.basket import BasketQueue
+from aiworker.domain.basket import BasketBoard
 from aiworker.domain.segments import SegmentPlaylist
 from aiworker.events import CommentIn, CommentReply, ComplianceAction, Notification
 from aiworker.llm import LLMClient
@@ -24,7 +24,7 @@ def make_agent() -> tuple[ComplianceAgent, EventBus, ShiftState]:
     bus = EventBus()
     state = ShiftState(
         "test",
-        BasketQueue.from_config(
+        BasketBoard.from_config(
             [{"id": "b1", "name": "A", "sku": "S1", "price": 100, "stock": 10}]
         ),
         SegmentPlaylist.from_config(

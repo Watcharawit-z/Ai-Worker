@@ -7,7 +7,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
-from .domain.basket import BasketQueue
+from .domain.basket import BasketBoard
 from .domain.segments import SegmentPlaylist
 from .events import Severity
 
@@ -21,6 +21,9 @@ class StreamStatus:
     viewers: int = 0
     current_segment: str | None = None
     seconds_remaining: float = 0.0
+    segment_started_at: float = field(default_factory=time.time)
+    """เวลาที่เริ่มเล่นท่อนปัจจุบัน — ใช้ตรวจว่าค่าจากตัวเล่นเป็นของเก่าค้างหรือเปล่า"""
+
     last_update: float = field(default_factory=time.time)
     last_alert: str = ""
 
@@ -87,13 +90,31 @@ class AdsStatus:
         }
 
 
+@dataclass(slots=True)
+class VerificationStatus:
+    """สถานะปริศนายืนยันตัวตน (จิ๊กซอว์)"""
+
+    total: int = 0
+    solved: int = 0
+    missed: int = 0
+    current: dict[str, Any] | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "total": self.total,
+            "solved": self.solved,
+            "missed": self.missed,
+            "current": self.current,
+        }
+
+
 class ShiftState:
     """สถานะทั้งกะ — agent อ่านได้ทุกตัว แต่เขียนเฉพาะส่วนที่ตัวเองรับผิดชอบ"""
 
     def __init__(
         self,
         channel_id: str,
-        baskets: BasketQueue,
+        baskets: BasketBoard,
         playlist: SegmentPlaylist,
     ) -> None:
         self.channel_id = channel_id
@@ -103,6 +124,7 @@ class ShiftState:
         self.stream = StreamStatus()
         self.compliance = ComplianceStatus()
         self.ads = AdsStatus()
+        self.verification = VerificationStatus()
         self.comment_count = 0
         self.reply_count = 0
         self.escalation_count = 0
@@ -127,6 +149,7 @@ class ShiftState:
             "baskets": self.baskets.summary(),
             "compliance": self.compliance.as_dict(),
             "ads": self.ads.as_dict(),
+            "verification": self.verification.as_dict(),
             "comments": {
                 "received": self.comment_count,
                 "replied": self.reply_count,

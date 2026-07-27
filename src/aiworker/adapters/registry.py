@@ -70,6 +70,21 @@ def build_ads(settings: Settings) -> Any:
     return MockAds(**settings.adapters.options.get("mock_ads", {}))
 
 
+def build_screen_watcher(settings: Settings) -> Any:
+    """ตัวเฝ้าจอสำหรับจับปริศนายืนยันตัวตน — อ่านภาพอย่างเดียว ไม่ควบคุมเครื่อง"""
+    kind = settings.verification.watcher
+    opts = settings.adapters.options.get("screen", {})
+    if kind == "template":
+        from .screen import TemplateScreenWatcher
+
+        return TemplateScreenWatcher(**opts)
+    if kind != "mock":
+        log.warning("ไม่รู้จัก screen watcher '%s' — ใช้ mock แทน", kind)
+    from .screen import MockScreenWatcher
+
+    return MockScreenWatcher(**settings.adapters.options.get("mock_screen", {}))
+
+
 def build_notifiers(settings: Settings) -> NotifierGroup:
     channels: list[Any] = []
     opts = settings.adapters.options

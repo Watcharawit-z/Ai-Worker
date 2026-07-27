@@ -155,16 +155,18 @@ class MockCommentSender:
 
 
 class MockShop:
-    """จำลองยอดขาย — ตะกร้าแต่ละใบมีอัตราขายไม่เท่ากัน เหมือนของจริง"""
+    """จำลองการปักตะกร้าและยอดขาย
+
+    ตะกร้าทุกใบอยู่ในไลฟ์ตลอด — ใบที่ถูกปักจะขายดีกว่าใบอื่นมาก
+    เพราะคนดูเห็นเด่นที่สุด
+    """
 
     def __init__(self, seed: int = 3, **_: Any) -> None:
         self._rng = random.Random(seed)
-        self._active: str | None = None
-        self._activated_at = 0.0
-        self._orders = 0
-        self._revenue = 0.0
-        self._rate = 1.0
-        self._price = 0.0
+        self._pinned: str | None = None
+        self._pinned_at = 0.0
+        self._sales: dict[str, dict[str, float]] = {}
+        self._rates: dict[str, float] = {}
 
     async def connect(self) -> bool:
         return True
@@ -172,29 +174,32 @@ class MockShop:
     async def disconnect(self) -> None:
         pass
 
-    async def set_active_basket(self, basket_id: str, sku: str) -> bool:
-        self._active = basket_id
-        self._activated_at = time.time()
-        self._orders = 0
-        self._revenue = 0.0
-        # ตะกร้าบางใบ "ติด" บางใบเงียบ — สุ่มความแรงตั้งแต่ต้น
-        self._rate = self._rng.choice([0.2, 0.5, 1.0, 2.5, 4.0])
-        self._price = self._rng.choice([199.0, 290.0, 390.0, 590.0])
+    async def pin_basket(self, basket_id: str, sku: str) -> bool:
+        self._pinned = basket_id
+        self._pinned_at = time.time()
+        self._sales.setdefault(basket_id, {"orders": 0.0, "revenue": 0.0})
+        if basket_id not in self._rates:
+            # ตะกร้าบางใบ "ติด" บางใบเงียบ
+            self._rates[basket_id] = self._rng.choice([0.3, 0.8, 1.5, 3.0, 5.0])
         return True
 
     async def fetch_sales(self, basket_id: str) -> SalesSnapshot | None:
-        if basket_id != self._active:
+        row = self._sales.get(basket_id)
+        if row is None:
             return None
-        minutes = (time.time() - self._activated_at) / 60.0
-        expected = minutes * self._rate
-        while self._orders < int(expected):
-            self._orders += 1
-            self._revenue += self._price
-        return SalesSnapshot(orders=self._orders, revenue=self._revenue, stock=None)
+        if basket_id == self._pinned:
+            minutes = (time.time() - self._pinned_at) / 60.0
+            target = minutes * self._rates.get(basket_id, 1.0)
+            while row["orders"] < int(target):
+                row["orders"] += 1
+                row["revenue"] += self._rng.choice([199.0, 290.0, 390.0, 590.0])
+        return SalesSnapshot(
+            orders=int(row["orders"]), revenue=row["revenue"], stock=None
+        )
 
 
 class MockAds:
-    """จำลองระบบแอด — ROAS ของแต่ละแคมเปญไม่เท่ากัน"""
+    """จำลอง GMV Max Live — ต้นทุนต่อการซื้อของแต่ละแคมเปญไม่เท่ากัน"""
 
     def __init__(self, seed: int = 5, **_: Any) -> None:
         self._rng = random.Random(seed)
@@ -208,16 +213,23 @@ class MockAds:
         pass
 
     async def create_campaign(
-        self, *, basket_id: str, sku: str, budget: float
+        self,
+        *,
+        basket_id: str,
+        sku: str,
+        budget: float,
+        campaign_type: str = "gmv_max_live",
     ) -> str | None:
         self._counter += 1
         campaign_id = f"cmp_{self._counter:03d}"
         self._campaigns[campaign_id] = {
-            "basket_id": basket_id,
+            "type": campaign_type,
             "budget": budget,
             "started_at": time.time(),
             "spend": 0.0,
-            "quality": self._rng.uniform(0.6, 5.0),  # ROAS ที่แคมเปญนี้ทำได้
+            # ต้นทุนต่อการซื้อจริงของแคมเปญนี้ — บางตัวถูก บางตัวแพงจนต้องปิด
+            "cpa": self._rng.choice([45.0, 65.0, 90.0, 140.0, 220.0]),
+            "aov": self._rng.uniform(250.0, 450.0),
             "active": True,
         }
         return campaign_id
@@ -242,6 +254,7 @@ class MockAds:
             # ใช้งบหมดในหนึ่งชั่วโมงโดยประมาณ
             c["spend"] = min(c["budget"], c["budget"] * minutes / 60.0)
         spend = c["spend"]
-        revenue = spend * c["quality"]
-        orders = int(revenue / 300) if revenue else 0
-        return AdMetricsSnapshot(spend=spend, orders=orders, revenue=revenue)
+        orders = int(spend / c["cpa"]) if spend else 0
+        return AdMetricsSnapshot(
+            spend=spend, orders=orders, revenue=orders * c["aov"]
+        )

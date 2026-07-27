@@ -67,8 +67,14 @@
     <div id="stream-rows"></div>
   </div>
 
+  <div class="card" id="jigsaw-card">
+    <h2>ปริศนาจิ๊กซอว์</h2>
+    <div class="big" id="jigsaw">—</div>
+    <div id="jigsaw-rows"></div>
+  </div>
+
   <div class="card">
-    <h2>ตะกร้าที่กำลังไลฟ์</h2>
+    <h2>ตะกร้าที่ปักอยู่</h2>
     <div class="big" id="basket-name">—</div>
     <div id="basket-rows"></div>
   </div>
@@ -80,7 +86,7 @@
   </div>
 
   <div class="card">
-    <h2>แอด</h2>
+    <h2>ต้นทุนการซื้อ (แอด)</h2>
     <div class="big" id="roas">—</div>
     <div id="ads-rows"></div>
   </div>
@@ -98,12 +104,12 @@
   </div>
 
   <div class="card wide">
-    <h2>คิวตะกร้า</h2>
+    <h2>ตะกร้าทั้งหมดในไลฟ์</h2>
     <table>
       <thead><tr>
         <th>#</th><th>สินค้า</th><th>สถานะ</th>
-        <th class="num">นาที</th><th class="num">ออเดอร์</th>
-        <th class="num">ยอดขาย</th><th class="num">ค่าแอด</th><th class="num">ROAS</th>
+        <th class="num">ปักรวม (นาที)</th><th class="num">ครั้ง</th>
+        <th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">กำไรขั้นต้น</th>
       </tr></thead>
       <tbody id="basket-table"></tbody>
     </table>
@@ -127,7 +133,10 @@ function rows(el, pairs) {
     .join('');
 }
 
-const STATE_LABEL = {queued: 'รอคิว', live: 'กำลังไลฟ์', done: 'จบแล้ว', skipped: 'ข้าม'};
+const mmss = s => {
+  s = Math.max(0, Math.round(s));
+  return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+};
 
 async function refresh() {
   let d;
@@ -139,7 +148,8 @@ async function refresh() {
   }
 
   const s = d.stream || {}, b = d.baskets || {}, c = d.comments || {},
-        ads = d.ads || {}, comp = d.compliance || {}, llm = d.llm || {};
+        ads = d.ads || {}, comp = d.compliance || {}, llm = d.llm || {},
+        v = d.verification || {};
 
   document.getElementById('head').innerHTML =
     `ช่อง <b>${esc(d.channel_id)}</b> · เข้ากะมาแล้ว ${fmt(d.uptime_minutes)} นาที · ` +
@@ -160,17 +170,41 @@ async function refresh() {
     ['เตือนล่าสุด', esc(s.last_alert) || '—'],
   ]);
 
-  // ตะกร้า
-  const live = b.live;
-  document.getElementById('basket-name').textContent = live ? live.name : 'ยังไม่ขึ้นตะกร้า';
-  rows('basket-rows', live ? [
-    ['ลำดับคิว', `${b.position} / ${b.total}`],
-    ['ราคา', `${fmt(live.price)} ฿`],
-    ['ไลฟ์มาแล้ว', `${live.minutes_live} นาที`],
-    ['ออเดอร์', fmt(live.orders)],
-    ['ยอดขาย', `${fmt(live.revenue)} ฿`],
-    ['คิวถัดไป', (b.upcoming || []).map(x => esc(x.name)).join(' → ') || '—'],
-  ] : [['สถานะ', 'รอระบบขึ้นตะกร้าแรก']]);
+  // จิ๊กซอว์ — เรื่องที่มีนาฬิกาเดินอยู่ ต้องเด่นที่สุด
+  const jigsawEl = document.getElementById('jigsaw');
+  const card = document.getElementById('jigsaw-card');
+  const ch = v.current;
+  if (ch) {
+    jigsawEl.textContent = `🧩 เหลือ ${mmss(ch.seconds_left)}`;
+    jigsawEl.style.color = ch.seconds_left <= 120 ? 'var(--bad)' : 'var(--warn)';
+    card.style.borderColor = 'var(--bad)';
+  } else {
+    jigsawEl.textContent = 'ไม่มีค้าง';
+    jigsawEl.style.color = 'var(--ok)';
+    card.style.borderColor = 'var(--line)';
+  }
+  rows('jigsaw-rows', [
+    ['เจอทั้งหมด', `${fmt(v.total)} ครั้ง`],
+    ['เลื่อนทัน', fmt(v.solved)],
+    ['พลาด', fmt(v.missed)],
+    ['สถานะ', ch
+      ? '<span class="pill bad">รอคนไปเลื่อน</span>'
+      : '<span class="pill ok">ปกติ</span>'],
+  ]);
+
+  // ตะกร้าที่ปักอยู่
+  const pinned = b.pinned;
+  document.getElementById('basket-name').textContent =
+    pinned ? pinned.name : 'ยังไม่ได้ปักตะกร้า';
+  rows('basket-rows', pinned ? [
+    ['SKU', esc(pinned.sku)],
+    ['ราคา', `${fmt(pinned.price)} ฿`],
+    ['ปักรวมทั้งกะ', `${pinned.pinned_minutes} นาที`],
+    ['ออเดอร์', fmt(pinned.orders)],
+    ['ยอดขาย', `${fmt(pinned.revenue)} ฿`],
+    ['ตะกร้าที่ยังไม่ถูกพูดถึง', (b.never_pinned || []).length
+      ? esc((b.never_pinned || []).join(', ')) : '—'],
+  ] : [['สถานะ', 'รอคลิปเริ่มพูดถึงสินค้า']]);
 
   // คอมเมนท์
   document.getElementById('comment-count').textContent = fmt(c.received);
@@ -181,18 +215,18 @@ async function refresh() {
     ['อัตราตอบอัตโนมัติ', `${answered}%`],
   ]);
 
-  // แอด
-  const roasEl = document.getElementById('roas');
-  const roas = ads.roas || 0;
-  roasEl.textContent = roas ? `ROAS ${roas.toFixed(2)}` : 'ยังไม่มีข้อมูล';
-  roasEl.style.color = !roas ? 'var(--muted)' : roas >= 3 ? 'var(--ok)'
-    : roas >= 1.5 ? 'var(--warn)' : 'var(--bad)';
+  // แอด — ไลฟ์นายหน้าดูต้นทุนต่อการซื้อเป็นหลัก
+  const cpaEl = document.getElementById('roas');
+  const cpa = ads.cpa || 0;
+  cpaEl.textContent = cpa ? `${fmt(cpa)} ฿/ออเดอร์` : 'ยังไม่มีข้อมูล';
+  cpaEl.style.color = !cpa ? 'var(--muted)' : cpa <= 70 ? 'var(--ok)'
+    : cpa <= 120 ? 'var(--warn)' : 'var(--bad)';
   rows('ads-rows', [
     ['แคมเปญ', esc(ads.campaign_id) || '—'],
     ['งบตั้งไว้', `${fmt(ads.budget)} ฿`],
     ['ใช้ไปแล้ว', `${fmt(ads.spend)} ฿`],
+    ['ออเดอร์จากแอด', fmt(ads.orders)],
     ['รายได้จากแอด', `${fmt(ads.revenue)} ฿`],
-    ['ต้นทุนต่อออเดอร์', ads.cpa ? `${fmt(ads.cpa)} ฿` : '—'],
     ['สิ่งที่ทำล่าสุด', esc(ads.last_action) || '—'],
   ]);
 
@@ -221,16 +255,16 @@ async function refresh() {
 
   // ตารางคิว
   document.getElementById('basket-table').innerHTML = (b.all || []).map((x, i) => `
-    <tr class="${x.state === 'live' ? 'live' : ''}">
+    <tr class="${x.is_pinned ? 'live' : ''}">
       <td>${i + 1}</td>
       <td>${esc(x.name)}</td>
-      <td>${STATE_LABEL[x.state] || esc(x.state)}</td>
-      <td class="num">${x.minutes_live}</td>
+      <td>${x.is_pinned ? 'ปักอยู่' : x.pin_count ? 'เคยปัก' : 'ยังไม่ถูกพูดถึง'}</td>
+      <td class="num">${x.pinned_minutes}</td>
+      <td class="num">${fmt(x.pin_count)}</td>
       <td class="num">${fmt(x.orders)}</td>
       <td class="num">${fmt(x.revenue)}</td>
-      <td class="num">${fmt(x.ad_spend)}</td>
-      <td class="num">${x.roas ? x.roas.toFixed(2) : '—'}</td>
-    </tr>`).join('') || '<tr><td colspan="8" class="empty">ยังไม่มีตะกร้าในคิว</td></tr>';
+      <td class="num">${fmt(x.gross_margin)}</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="empty">ยังไม่มีตะกร้าในไลฟ์</td></tr>';
 
   // log
   document.getElementById('log').innerHTML = (d.logs || []).slice().reverse().map(l =>

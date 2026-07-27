@@ -8,7 +8,7 @@ import pytest
 
 from aiworker.agents.base import Agent
 from aiworker.bus import EventBus
-from aiworker.domain.basket import BasketQueue
+from aiworker.domain.basket import BasketBoard
 from aiworker.domain.segments import SegmentPlaylist
 from aiworker.events import CommentIn, Event, Notification, Severity, ViolationDetected
 from aiworker.settings import Settings
@@ -18,7 +18,7 @@ from aiworker.state import ShiftState
 def make_state() -> ShiftState:
     return ShiftState(
         "test-channel",
-        BasketQueue.from_config(
+        BasketBoard.from_config(
             [{"id": "b1", "name": "A", "sku": "S1", "price": 100, "stock": 10}]
         ),
         SegmentPlaylist.from_config(

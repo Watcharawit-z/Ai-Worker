@@ -14,7 +14,9 @@ import logging
 import signal
 import sys
 
+from .fleet import FleetHub, FleetReporter
 from .runtime import Shift, build_shift
+from .settings import load_settings
 from .web.server import Dashboard
 
 
@@ -42,14 +44,36 @@ def _check(shift: Shift) -> int:
             ok = False
 
     line("ช่อง", s.shop.channel_id, bool(s.shop.channel_id))
+    line("เครื่อง", s.verification.machine_name or "(ยังไม่ตั้งชื่อ)", True)
     line(
-        "ตะกร้าในคิว",
+        "ตะกร้าในไลฟ์",
         f"{len(shift.state.baskets.baskets)} ใบ",
         len(shift.state.baskets.baskets) > 0,
     )
     segs = shift.state.playlist.segments
     minutes = shift.state.playlist.total_duration() / 60.0
     line("คลิปสำหรับรีรัน", f"{len(segs)} ท่อน รวม {minutes:.0f} นาที", len(segs) > 0)
+
+    # ตรวจว่าคิวชีตชี้ไปยังตะกร้าที่มีจริงหรือเปล่า — พลาดตรงนี้คือปักตะกร้าผิดทั้งกะ
+    known = shift.state.baskets.known_skus()
+    cue_problems: list[str] = []
+    cued = 0
+    for seg in segs:
+        cue_problems += [f"[{seg.id}] {p}" for p in seg.cues.validate_against(known)]
+        cued += len(seg.cues.cues)
+        if not seg.cues and seg.sku and seg.sku not in known:
+            cue_problems.append(f"[{seg.id}] sku {seg.sku} ไม่มีในรายการตะกร้า")
+    line("คิวชีต (จุดเปลี่ยนตะกร้า)", f"{cued} จุด", not cue_problems)
+    for problem in cue_problems[:8]:
+        print(f"       ↳ {problem}")
+
+    line(
+        "ตัวเฝ้าจิ๊กซอว์",
+        f"{s.verification.watcher} (ให้เวลา {s.verification.deadline_seconds / 60:.0f} นาที)"
+        if s.verification.enabled
+        else "ปิดอยู่ — ต้องมีคนเฝ้าจอเองตลอด",
+        s.verification.enabled,
+    )
     line(
         "ข้อมูลสินค้า",
         f"{len(shift.knowledge.get('products', []))} รายการ",
@@ -80,10 +104,44 @@ def _check(shift: Shift) -> int:
             print(f"   {mark} {label:<24} {seconds / 60:.0f} นาที")
         print("\n   ! = คลิปน้อยกว่า 10 นาที จะวนซ้ำเร็ว คนดูจับได้ง่าย")
 
+    covered = {sku for seg in segs for sku in seg.all_skus() if sku}
+    never = [b for b in shift.state.baskets.baskets if b.sku and b.sku not in covered]
+    if never:
+        print("\n  ตะกร้าที่ไม่มีคลิปพูดถึงเลย (จะไม่ถูกปักทั้งกะ):")
+        for basket in never:
+            print(f"     {basket.sku:<12} {basket.name}")
+
     print(
         "\n" + ("พร้อมเข้ากะ" if ok else "ยังขาดบางอย่าง — ดูรายการ ✗ ด้านบน") + "\n"
     )
     return 0 if ok else 1
+
+
+async def _run_hub(settings) -> None:
+    """โหมด hub — ไม่ไลฟ์เอง แค่รวมจอของเครื่องอื่น"""
+    hub = FleetHub(
+        settings.fleet.hub_host,
+        settings.fleet.hub_port,
+        settings.fleet.offline_after_seconds,
+    )
+    if not hub.start():
+        return
+    print(
+        f"\nจอรวมพร้อมแล้ว เปิดที่ http://{settings.fleet.hub_host}:"
+        f"{settings.fleet.hub_port}\nกด Ctrl+C เพื่อปิด\n",
+        flush=True,
+    )
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except NotImplementedError:
+            signal.signal(sig, lambda *_: stop.set())
+    try:
+        await stop.wait()
+    finally:
+        hub.stop()
 
 
 async def _run(shift: Shift, minutes: float | None) -> None:
@@ -93,6 +151,17 @@ async def _run(shift: Shift, minutes: float | None) -> None:
             shift.snapshot, shift.settings.web.host, shift.settings.web.port
         )
         dashboard.start()
+
+    reporter: FleetReporter | None = None
+    fleet = shift.settings.fleet
+    if fleet.role == "worker" and fleet.hub_url:
+        reporter = FleetReporter(
+            fleet.hub_url,
+            fleet.machine_name or shift.settings.shop.channel_id,
+            shift.snapshot,
+            fleet.report_seconds,
+        )
+        reporter.start()
 
     loop = asyncio.get_running_loop()
     stop = asyncio.Event()
@@ -116,6 +185,8 @@ async def _run(shift: Shift, minutes: float | None) -> None:
     except asyncio.TimeoutError:
         print(f"\nครบ {minutes:.0f} นาทีตามที่สั่ง — ปิดกะ", flush=True)
     finally:
+        if reporter:
+            await reporter.stop()
         await shift.stop()
         if dashboard:
             dashboard.stop()
@@ -138,9 +209,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="ตรวจความพร้อมแล้วออก")
     parser.add_argument("--minutes", type=float, help="รันกี่นาทีแล้วหยุดเอง (ใช้ทดลอง)")
     parser.add_argument("-v", "--verbose", action="store_true", help="log ละเอียด")
+    parser.add_argument(
+        "--hub", action="store_true", help="รันเป็นจอรวม ไม่ไลฟ์เอง (คุมหลายเครื่อง)"
+    )
     args = parser.parse_args(argv)
 
     _setup_logging(args.verbose)
+
+    if args.hub:
+        try:
+            asyncio.run(_run_hub(load_settings(args.config)))
+        except KeyboardInterrupt:
+            pass
+        return 0
+
     shift = build_shift(args.config)
 
     if args.check:

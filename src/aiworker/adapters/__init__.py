@@ -6,6 +6,7 @@ from .registry import (
     build_comment_source,
     build_notifiers,
     build_player,
+    build_screen_watcher,
     build_shop,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "build_comment_source",
     "build_notifiers",
     "build_player",
+    "build_screen_watcher",
     "build_shop",
 ]

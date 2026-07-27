@@ -32,26 +32,36 @@ compliance:
   banned_words: ["ของก๊อป"]
 
 baskets:
-  min_minutes_per_basket: 0.5     # ปกติ 20
-  evaluate_after_minutes: 1.0     # ปกติ 60
-  max_minutes_per_basket: 2.0     # ปกติ 90
-  min_orders_to_continue: 3
-  rotate_on_poor_performance: true
+  pin_check_seconds: 2
+  pin_lead_seconds: 2
+  alert_on_missing_sku: true
 
 ads:
   enabled: true
+  campaign_type: gmv_max_live
   starting_budget: 300
-  max_budget: 3000
-  scale_step: 1.5
-  target_roas: 3.0
-  kill_roas: 1.2
-  min_spend_before_judging: 10    # ปกติ 150
+  max_budget: 2000
+  scale_step: 1.3
+  max_cpa: 120
+  target_cpa: 70
+  min_spend_before_judging: 10      # ปกติ 150
+  min_purchases_before_judging: 1   # ปกติ 2
+  grace_minutes_after_launch: 0.3   # ปกติ 20
+  relaunch_cooldown_minutes: 0.5    # ปกติ 30
+  max_relaunches_per_live: 3
   check_interval_seconds: 10
 
+verification:
+  enabled: true
+  machine_name: "demo-pc"
+  deadline_seconds: 60            # ปกติ 300 — ย่อให้เห็นการปลุกครบทุกขั้นเร็ว ๆ
+  poll_seconds: 2
+  watcher: mock
+
 stream:
-  health_interval_seconds: 3
+  health_interval_seconds: 2
   stall_alert_after_seconds: 10
-  segment_min_seconds: 15         # ปกติ 120
+  segment_min_seconds: 60         # ปกติ 120
   shuffle_segments: true
   avoid_repeat_within: 3
 
@@ -64,6 +74,9 @@ adapters:
   options:
     mock_comments:
       rate_per_minute: 120        # คอมเมนท์ถล่มเข้ามา ดูว่าระบบรับไหวไหม
+    mock_screen:
+      every_seconds: 90           # จิ๊กซอว์โผล่ถี่ ๆ จะได้เห็นสายการปลุกคน
+      visible_seconds: 25
 
 web:
   enabled: true
@@ -72,4 +85,4 @@ web:
 
 products_path: "config/knowledge/products.yaml"
 baskets_path: "config/baskets.yaml"
-segments_path: "config/segments.yaml"
+segments_path: "config/demo_segments.yaml"

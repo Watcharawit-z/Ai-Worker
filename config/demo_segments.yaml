@@ -1,0 +1,34 @@
+# คลิปสำหรับโหมดสาธิต — ย่อทุกอย่างให้เห็นการปักตะกร้าตามคิวชีตภายในไม่กี่นาที
+# ของจริงคลิปยาวเป็นชั่วโมง จุดเปลี่ยนห่างกัน 10-20 นาที
+
+segments:
+  - id: demo_full
+    path: "media/demo_full.mp4"
+    duration_seconds: 300
+    weight: 5.0
+    tags: [full_show]
+    cues:
+      - at_seconds: 0
+        sku: SKU-001
+        note: "เปิดด้วยเซรั่ม"
+      - at_seconds: 40
+        sku: SKU-003
+        note: "เข้าเซตแต่งหน้า"
+      - at_seconds: 80
+        sku: SKU-004
+        note: "สวอตช์ลิป"
+      - at_seconds: 120
+        sku: SKU-002
+        note: "กันแดด"
+      - at_seconds: 160
+        sku: SKU-006
+        note: "มาสก์ปิดการขาย"
+      - at_seconds: 200
+        sku: SKU-001
+        note: "วนกลับตัวขายดี"
+
+  - id: demo_short_sku003
+    path: "media/demo_sku003.mp4"
+    duration_seconds: 90
+    sku: SKU-003
+    tags: [demo]

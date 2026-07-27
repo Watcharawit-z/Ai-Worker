@@ -1,78 +1,74 @@
-# คลังท่อนวิดีโอสำหรับรีรัน — นี่คือ "ชิ้นจิ๊กซอว์"
+# คลิปที่ใช้รีรัน + คิวชีตบอกว่านาทีไหนพูดถึงสินค้าตัวไหน
 #
-# วิธีเตรียม: อัดไลฟ์จริงไว้ แล้วตัดเป็นท่อน ๆ ท่อนละ 3-8 นาที
-# ท่อนไหนพูดถึงสินค้าตัวไหน ใส่ sku ให้ตรงกัน
-# ระบบจะเลือกท่อนที่ตรงกับตะกร้าที่ขึ้นอยู่โดยอัตโนมัติ
+# คิวชีตคือหัวใจของการปักตะกร้าให้ถูก
+# ระบบจะอ่านว่าเล่นมาถึงวินาทีที่เท่าไหร่ แล้วปักตะกร้าตามที่คนในคลิปกำลังพูด
 #
-# sku ว่าง = ท่อนกลาง (ทักทาย/เล่นเกม/ตอบคำถามทั่วไป) ใช้แทรกได้ทุกช่วง
-# weight    = ท่อนที่ขายดีตั้งค่าสูงไว้ ระบบจะหยิบบ่อยขึ้น (ค่าปกติ 1.0)
+# ═══ วิธีทำคิวชีต (ทำครั้งเดียวต่อคลิป) ═══
+# 1. เปิดคลิปที่จะรีรัน จดเวลาที่คนไลฟ์เริ่มพูดถึงสินค้าแต่ละตัว
+# 2. ใส่ at_seconds (วินาทีนับจากต้นคลิป) กับ sku ให้ตรงกับ baskets.yaml
+# 3. ไม่ต้องละเอียดถึงวินาที ±10 วินาทีก็พอ แต่ให้ "ปักก่อนพูด" ดีกว่าปักช้า
 #
-# เคล็ดลับกันคนดูจับได้ว่าเป็นรีรัน:
-#   1. มีท่อนกลางเยอะ ๆ ไว้แทรกสลับ
-#   2. อย่าให้ความยาวรวมต่ำกว่า 2-3 ชั่วโมงต่อกะ
-#   3. ตัดให้จบประโยคเสมอ อย่าตัดกลางคำ
+# เช็คว่าคิวชีตถูกไหม:  python -m aiworker --check
 
 segments:
-  - id: seg001
-    path: "media/intro_greeting.mp4"
-    duration_seconds: 180
-    sku: ""
-    tags: [greeting]
-    weight: 0.8
+  # ── แบบที่ 1: คลิปยาวไฟล์เดียวทั้งกะ + คิวชีต (ตรงกับการรีรันจริงมากที่สุด) ──
+  - id: full_20250726
+    path: "media/live_20250726_full.mp4"
+    duration_seconds: 7200          # 2 ชั่วโมง
+    weight: 2.0
+    tags: [full_show]
+    cues:
+      - at_seconds: 0
+        sku: SKU-001
+        note: "เปิดไลฟ์ ทักทาย แล้วเข้าเซรั่มเลย"
+      - at_seconds: 900             # 15:00
+        sku: SKU-003
+        note: "เริ่มรีวิวเซตแต่งหน้า"
+      - at_seconds: 2100            # 35:00
+        sku: SKU-004
+        note: "สวอตช์ลิปทีละเฉด"
+      - at_seconds: 3300            # 55:00
+        sku: SKU-002
+        note: "กันแดด ทาโชว์หน้ากล้อง"
+      - at_seconds: 4500            # 75:00
+        sku: SKU-006
+        note: "มาสก์ราคาถูก ปิดการขายคนลังเล"
+      - at_seconds: 5400            # 90:00
+        sku: SKU-003
+        note: "วนกลับมาเซตแต่งหน้าอีกรอบ"
+      - at_seconds: 6600            # 110:00
+        sku: SKU-001
+        note: "ปิดท้ายด้วยตัวขายดี"
 
-  - id: seg002
-    path: "media/sku001_demo_a.mp4"
-    duration_seconds: 300
+  # ── แบบที่ 2: ตัดเป็นท่อน ท่อนละสินค้า (ไม่ต้องมีคิวชีต ใส่ sku ที่ท่อนเลย) ──
+  - id: seg_sku001_demo
+    path: "media/sku001_demo.mp4"
+    duration_seconds: 600
     sku: SKU-001
     tags: [demo]
     weight: 1.5
 
-  - id: seg003
-    path: "media/sku001_review.mp4"
-    duration_seconds: 240
-    sku: SKU-001
-    tags: [review]
-
-  - id: seg004
-    path: "media/sku002_demo.mp4"
-    duration_seconds: 280
-    sku: SKU-002
-    tags: [demo]
-
-  - id: seg005
+  - id: seg_sku003_unbox
     path: "media/sku003_unbox.mp4"
-    duration_seconds: 420
+    duration_seconds: 720
     sku: SKU-003
     tags: [unbox]
     weight: 2.0
 
-  - id: seg006
+  - id: seg_sku004_swatch
     path: "media/sku004_swatch.mp4"
-    duration_seconds: 260
+    duration_seconds: 480
     sku: SKU-004
     tags: [swatch]
 
-  - id: seg007
-    path: "media/filler_qa.mp4"
-    duration_seconds: 200
-    sku: ""
-    tags: [qa, filler]
-    weight: 1.2
-
-  - id: seg008
-    path: "media/filler_chitchat.mp4"
-    duration_seconds: 220
-    sku: ""
-    tags: [filler]
-
-  - id: seg009
-    path: "media/sku005_demo.mp4"
-    duration_seconds: 240
-    sku: SKU-005
+  - id: seg_sku002_demo
+    path: "media/sku002_demo.mp4"
+    duration_seconds: 540
+    sku: SKU-002
     tags: [demo]
 
-  - id: seg010
-    path: "media/closing_push.mp4"
-    duration_seconds: 190
-    sku: ""
-    tags: [closing]
+  - id: seg_sku006_demo
+    path: "media/sku006_demo.mp4"
+    duration_seconds: 420
+    sku: SKU-006
+    tags: [demo]

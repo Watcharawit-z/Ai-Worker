@@ -1,17 +1,14 @@
-"""คิวตะกร้า 10 ใบ — ตรรกะล้วน ไม่มี I/O เพื่อให้เทสง่าย"""
+"""ตะกร้าที่อยู่ในไลฟ์ — ตรรกะล้วน ไม่มี I/O เพื่อให้เทสง่าย
+
+ในไลฟ์นายหน้าแบบรีรัน ตะกร้าทุกใบอยู่ในไลฟ์พร้อมกันตั้งแต่ต้น
+สิ่งที่เปลี่ยนไปมาคือ "ใบไหนถูกปักขึ้นแสดง" ตามที่คนในคลิปกำลังพูดถึง
+ไม่ใช่การหมุนคิวเข้า-ออกตามเวลา
+"""
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
-
-
-class BasketState(str, Enum):
-    QUEUED = "queued"
-    LIVE = "live"
-    DONE = "done"
-    SKIPPED = "skipped"
 
 
 @dataclass(slots=True)
@@ -22,29 +19,24 @@ class Basket:
     price: float
     cost: float = 0.0
     stock: int = 0
-    state: BasketState = BasketState.QUEUED
-    started_at: float | None = None
-    ended_at: float | None = None
     orders: int = 0
     revenue: float = 0.0
-    ad_spend: float = 0.0
     notes: str = ""
 
-    @property
-    def minutes_live(self) -> float:
-        if self.started_at is None:
-            return 0.0
-        end = self.ended_at or time.time()
-        return (end - self.started_at) / 60.0
+    pinned_seconds: float = 0.0
+    """รวมเวลาที่ถูกปักแสดงทั้งกะ — ใช้ดูว่าคลิปให้เวลาสินค้าตัวไหนมากน้อย"""
+
+    pin_count: int = 0
+    last_pinned_at: float | None = None
 
     @property
-    def margin(self) -> float:
-        """กำไรขั้นต้นหลังหักค่าแอด"""
-        return self.revenue - (self.cost * self.orders) - self.ad_spend
+    def is_pinned(self) -> bool:
+        return self.last_pinned_at is not None
 
     @property
-    def roas(self) -> float:
-        return self.revenue / self.ad_spend if self.ad_spend > 0 else 0.0
+    def gross_margin(self) -> float:
+        """กำไรขั้นต้นก่อนหักค่าแอด (ค่าแอดเป็นของทั้งไลฟ์ ไม่ใช่ของตะกร้าใบเดียว)"""
+        return self.revenue - (self.cost * self.orders)
 
     def as_dict(self) -> dict:
         return {
@@ -52,40 +44,27 @@ class Basket:
             "name": self.name,
             "sku": self.sku,
             "price": self.price,
-            "state": self.state.value,
-            "minutes_live": round(self.minutes_live, 1),
             "orders": self.orders,
             "revenue": round(self.revenue, 2),
-            "ad_spend": round(self.ad_spend, 2),
-            "roas": round(self.roas, 2),
-            "margin": round(self.margin, 2),
+            "gross_margin": round(self.gross_margin, 2),
             "stock": self.stock,
+            "pinned_minutes": round(self.pinned_seconds / 60.0, 1),
+            "pin_count": self.pin_count,
+            "is_pinned": self.is_pinned,
         }
 
 
-class Verdict(str, Enum):
-    """คำตัดสินว่าตะกร้านี้ไปต่อหรือพอ"""
+class BasketBoard:
+    """ตะกร้าทั้งหมดที่อยู่ในไลฟ์ พร้อมตัวชี้ว่าใบไหนถูกปักอยู่"""
 
-    TOO_EARLY = "too_early"
-    KEEP_GOING = "keep_going"
-    SCALE = "scale"
-    ROTATE = "rotate"
-    OUT_OF_STOCK = "out_of_stock"
-
-
-@dataclass(slots=True)
-class BasketQueue:
-    """คิวตะกร้าของหนึ่งช่อง
-
-    งานของ 'พนักงานดูแลช่องและจัดการตะกร้า' ในสไลด์:
-    เตรียมตะกร้าไว้ 10 ใบ แล้วหมุนตามคิว
-    """
-
-    baskets: list[Basket] = field(default_factory=list)
-    _live_index: int | None = field(default=None, init=False)
+    def __init__(self, baskets: list[Basket]) -> None:
+        self.baskets = baskets
+        self._by_sku = {b.sku: b for b in baskets if b.sku}
+        self._pinned_id: str | None = None
+        self._pinned_at: float | None = None
 
     @classmethod
-    def from_config(cls, rows: list[dict]) -> BasketQueue:
+    def from_config(cls, rows: list[dict]) -> BasketBoard:
         baskets = [
             Basket(
                 id=str(r.get("id") or f"b{i + 1:02d}"),
@@ -98,115 +77,77 @@ class BasketQueue:
             )
             for i, r in enumerate(rows)
         ]
-        return cls(baskets=baskets)
+        return cls(baskets)
+
+    # ---------------- ค้นหา ----------------
+
+    def by_sku(self, sku: str) -> Basket | None:
+        return self._by_sku.get(sku)
+
+    def by_id(self, basket_id: str) -> Basket | None:
+        return next((b for b in self.baskets if b.id == basket_id), None)
 
     @property
-    def live(self) -> Basket | None:
-        if self._live_index is None:
+    def pinned(self) -> Basket | None:
+        return self.by_id(self._pinned_id) if self._pinned_id else None
+
+    def known_skus(self) -> set[str]:
+        return set(self._by_sku)
+
+    # ---------------- ปักตะกร้า ----------------
+
+    def mark_pinned(self, basket_id: str) -> Basket | None:
+        """บันทึกว่าตะกร้าใบนี้ถูกปักขึ้นแสดงแล้ว"""
+        target = self.by_id(basket_id)
+        if target is None:
             return None
-        return self.baskets[self._live_index]
 
-    @property
-    def position(self) -> int:
-        """ลำดับตะกร้าที่กำลังไลฟ์ (เริ่มที่ 1) — ใช้บอกพนักงานไลฟ์ว่าคิวถึงไหน"""
-        return 0 if self._live_index is None else self._live_index + 1
+        now = time.time()
+        previous = self.pinned
+        if previous is not None and self._pinned_at is not None:
+            previous.pinned_seconds += now - self._pinned_at
+            previous.last_pinned_at = None
 
-    def next_queued_index(self) -> int | None:
-        start = 0 if self._live_index is None else self._live_index + 1
-        for i in range(start, len(self.baskets)):
-            if self.baskets[i].state == BasketState.QUEUED and self.baskets[i].stock != 0:
-                return i
-        return None
+        target.pin_count += 1
+        target.last_pinned_at = now
+        self._pinned_id = target.id
+        self._pinned_at = now
+        return target
 
-    def upcoming(self, count: int = 3) -> list[Basket]:
-        """ตะกร้าถัดไปในคิว — เอาไว้แจ้งพนักงานไลฟ์ล่วงหน้า
+    def settle_pinned_time(self) -> None:
+        """ปิดยอดเวลาของใบที่ปักอยู่ — เรียกตอนจบกะเพื่อให้ตัวเลขครบ"""
+        current = self.pinned
+        if current is not None and self._pinned_at is not None:
+            current.pinned_seconds += time.time() - self._pinned_at
+            self._pinned_at = time.time()
 
-        ข้ามใบที่ของหมด เพราะแจ้งไปแล้วพนักงานก็ขายไม่ได้
-        """
-        start = 0 if self._live_index is None else self._live_index + 1
-        return [
-            b
-            for b in self.baskets[start:]
-            if b.state == BasketState.QUEUED and b.stock != 0
-        ][:count]
+    # ---------------- ยอดขาย ----------------
 
-    def activate_next(self, *, reason: str = "") -> Basket | None:
-        """ปิดตะกร้าปัจจุบันแล้วขึ้นใบถัดไป"""
-        idx = self.next_queued_index()
-        if idx is None:
-            return None
-        current = self.live
-        if current is not None:
-            current.state = BasketState.DONE
-            current.ended_at = time.time()
-            if reason:
-                current.notes = (current.notes + f" | ปิดเพราะ: {reason}").strip(" |")
-        nxt = self.baskets[idx]
-        nxt.state = BasketState.LIVE
-        nxt.started_at = time.time()
-        self._live_index = idx
-        return nxt
-
-    def record_sale(self, orders: int, revenue: float) -> None:
-        b = self.live
-        if b is None:
+    def record_sale(self, sku: str, orders: int, revenue: float) -> None:
+        basket = self.by_sku(sku)
+        if basket is None:
             return
-        b.orders += orders
-        b.revenue += revenue
-        if b.stock > 0:
-            b.stock = max(0, b.stock - orders)
+        basket.orders += orders
+        basket.revenue += revenue
+        if basket.stock > 0:
+            basket.stock = max(0, basket.stock - orders)
 
-    def record_ad_spend(self, amount: float) -> None:
-        if self.live is not None:
-            self.live.ad_spend += amount
+    def out_of_stock(self) -> list[Basket]:
+        return [b for b in self.baskets if b.stock == 0 and b.pin_count > 0]
 
-    def evaluate(
-        self,
-        *,
-        min_minutes: float,
-        max_minutes: float,
-        evaluate_after_minutes: float,
-        min_orders: int,
-        target_roas: float,
-    ) -> Verdict:
-        """ตัดสินว่าตะกร้าที่ไลฟ์อยู่ควรไปต่อหรือเปลี่ยน
+    def never_pinned(self) -> list[Basket]:
+        """ตะกร้าที่ไม่เคยถูกพูดถึงเลยทั้งกะ — คลิปอาจไม่ครอบคลุม"""
+        return [b for b in self.baskets if b.pin_count == 0]
 
-        ตรงกับกฎในสไลด์: "สังเกตยอดขายภายใน 1 ชม. มียอดขายแค่ไหน
-        สินค้าที่ไลฟ์ไปต่อได้มั้ย"
-        """
-        b = self.live
-        if b is None:
-            return Verdict.ROTATE
-        if b.stock == 0:
-            return Verdict.OUT_OF_STOCK
-
-        mins = b.minutes_live
-        if mins >= max_minutes:
-            return Verdict.ROTATE
-        if mins < min_minutes:
-            return Verdict.TOO_EARLY
-        if mins < evaluate_after_minutes:
-            # ยังไม่ถึงเวลาตัดสิน แต่ถ้าติดแรงมากก็สเกลเลย
-            if b.orders >= min_orders * 3 and (b.ad_spend == 0 or b.roas >= target_roas):
-                return Verdict.SCALE
-            return Verdict.TOO_EARLY
-
-        if b.orders < min_orders:
-            return Verdict.ROTATE
-        if b.ad_spend > 0 and b.roas < target_roas * 0.5:
-            return Verdict.ROTATE
-        if b.orders >= min_orders * 2 and (b.ad_spend == 0 or b.roas >= target_roas):
-            return Verdict.SCALE
-        return Verdict.KEEP_GOING
+    # ---------------- สรุป ----------------
 
     def summary(self) -> dict:
+        pinned = self.pinned
         return {
-            "position": self.position,
             "total": len(self.baskets),
-            "live": self.live.as_dict() if self.live else None,
-            "upcoming": [b.as_dict() for b in self.upcoming(3)],
+            "pinned": pinned.as_dict() if pinned else None,
             "all": [b.as_dict() for b in self.baskets],
             "total_revenue": round(sum(b.revenue for b in self.baskets), 2),
             "total_orders": sum(b.orders for b in self.baskets),
-            "total_ad_spend": round(sum(b.ad_spend for b in self.baskets), 2),
+            "never_pinned": [b.name for b in self.never_pinned()],
         }

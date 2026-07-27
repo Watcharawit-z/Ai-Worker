@@ -106,6 +106,40 @@ class SegmentChanged(Event):
 
 
 @dataclass(slots=True)
+class ChallengeDetected(Event):
+    """ปริศนายืนยันตัวตน (จิ๊กซอว์) โผล่ขึ้นมาบนจอ — ต้องมีคนไปเลื่อน"""
+
+    topic = "verify.challenge_detected"
+    machine: str = ""
+    seconds_left: float = 0.0
+    confidence: float = 0.0
+    urgency: str = ""
+
+
+@dataclass(slots=True)
+class ChallengeResolved(Event):
+    """ปริศนาถูกจัดการแล้ว หรือหมดเวลาไปแล้ว"""
+
+    topic = "verify.challenge_resolved"
+    machine: str = ""
+    solved: bool = False
+    seconds_taken: float = 0.0
+
+
+@dataclass(slots=True)
+class BasketPinned(Event):
+    """ปักตะกร้าขึ้นแสดง ให้ตรงกับสินค้าที่คนในคลิปกำลังพูดถึง"""
+
+    topic = "basket.pinned"
+    basket_id: str = ""
+    name: str = ""
+    sku: str = ""
+    price: float = 0.0
+    reason: str = ""
+    segment: str = ""
+
+
+@dataclass(slots=True)
 class StreamAlert(Event):
     """สตรีมมีปัญหา เช่น ค้าง ดับ เฟรมตก"""
 

@@ -275,10 +275,23 @@ class CommentAgent(Agent):
         return "\n".join(lines)
 
     def _build_user_prompt(self, comments: list[CommentIn]) -> str:
-        basket = self.state.baskets.live
+        pinned = self.state.baskets.pinned
+        others = [b for b in self.state.baskets.baskets if b is not pinned]
         context = [
-            "สินค้าที่กำลังไลฟ์อยู่ตอนนี้: "
-            + (f"[{basket.sku}] {basket.name} ราคา {basket.price} บาท" if basket else "ยังไม่ขึ้นตะกร้า"),
+            "สินค้าที่ปักแสดงอยู่ตอนนี้ (คนในคลิปกำลังพูดถึงตัวนี้): "
+            + (
+                f"[{pinned.sku}] {pinned.name} ราคา {pinned.price:.0f} บาท"
+                if pinned
+                else "ยังไม่ได้ปักตะกร้า"
+            ),
+            "",
+            "ตะกร้าอื่นที่อยู่ในไลฟ์นี้ด้วย (ลูกค้าถามถึงได้ตลอด):",
+        ]
+        context += [
+            f"- [{b.sku}] {b.name} ราคา {b.price:.0f} บาท" for b in others
+        ] or ["- (ไม่มี)"]
+        context += [
+            "",
             f"จำนวนคนดูตอนนี้: {self.state.stream.viewers}",
             "",
             "คอมเมนท์ที่ต้องพิจารณา:",

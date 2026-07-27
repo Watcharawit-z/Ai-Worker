@@ -7,7 +7,7 @@ Adapter คือจุดที่ระบบไปแตะโลกจริ
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ..domain.segments import Segment
 
@@ -69,10 +69,22 @@ class CommentSender(Adapter, Protocol):
 
 @runtime_checkable
 class ShopAdapter(Adapter, Protocol):
-    """ระบบร้าน — ขึ้นตะกร้าและอ่านยอดขาย"""
+    """ระบบร้าน — ปักตะกร้าขึ้นแสดงและอ่านยอดขาย"""
 
-    async def set_active_basket(self, basket_id: str, sku: str) -> bool: ...
+    async def pin_basket(self, basket_id: str, sku: str) -> bool:
+        """ปักตะกร้าใบนี้ขึ้นแสดงในไลฟ์ (ตะกร้าใบอื่นยังอยู่ในไลฟ์เหมือนเดิม)"""
+        ...
+
     async def fetch_sales(self, basket_id: str) -> SalesSnapshot | None: ...
+
+
+@runtime_checkable
+class ScreenWatcher(Protocol):
+    """อ่านหน้าจอเพื่อดูว่าปริศนายืนยันตัวตนโผล่หรือยัง — อ่านอย่างเดียว"""
+
+    async def connect(self) -> bool: ...
+    async def disconnect(self) -> None: ...
+    async def read(self) -> Any: ...
 
 
 @runtime_checkable
@@ -80,7 +92,12 @@ class AdsAdapter(Adapter, Protocol):
     """ระบบแอด"""
 
     async def create_campaign(
-        self, *, basket_id: str, sku: str, budget: float
+        self,
+        *,
+        basket_id: str,
+        sku: str,
+        budget: float,
+        campaign_type: str = "gmv_max_live",
     ) -> str | None: ...
     async def set_budget(self, campaign_id: str, budget: float) -> bool: ...
     async def pause_campaign(self, campaign_id: str) -> bool: ...

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>จอรวมทุกเครื่อง</title>
+<style>
+  :root {
+    --bg:#0d0f14; --panel:#151922; --line:#262c3a; --text:#e6e9ef;
+    --muted:#8b93a7; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; --accent:#22d3ee;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:14px; background:var(--bg); color:var(--text);
+         font-family:-apple-system,"Segoe UI","Noto Sans Thai",sans-serif; font-size:14px; }
+  h1 { font-size:18px; margin:0 0 2px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:14px; }
+  .totals { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+            margin-bottom:16px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .stat .k { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .stat .v { font-size:22px; font-weight:700; }
+  .machines { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); }
+  .m { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px;
+       border-left:4px solid var(--line); }
+  .m.alarm { border-left-color:var(--bad); background:#1d1417; }
+  .m.down  { border-left-color:var(--warn); }
+  .m.offline { opacity:.5; border-left-color:var(--muted); }
+  .m h2 { margin:0 0 8px; font-size:15px; display:flex; justify-content:space-between; align-items:center; }
+  .countdown { font-size:30px; font-weight:800; font-variant-numeric:tabular-nums;
+               color:var(--bad); margin:6px 0; }
+  .countdown.calm { color:var(--warn); }
+  .row { display:flex; justify-content:space-between; padding:3px 0;
+         border-bottom:1px solid var(--line); font-size:12.5px; }
+  .row:last-child { border-bottom:0; }
+  .row span:first-child { color:var(--muted); }
+  .pill { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+  .ok{background:rgba(52,211,153,.15);color:var(--ok)}
+  .warn{background:rgba(251,191,36,.15);color:var(--warn)}
+  .bad{background:rgba(248,113,113,.15);color:var(--bad)}
+  .empty { color:var(--muted); font-style:italic; padding:20px; text-align:center; }
+  .banner { background:#3b1218; border:1px solid var(--bad); color:#fecaca;
+            padding:12px 14px; border-radius:10px; margin-bottom:14px; font-weight:600; }
+</style>
+</head>
+<body>
+<h1>จอรวมทุกเครื่อง</h1>
+<div class="sub" id="head">กำลังเชื่อมต่อ…</div>
+<div id="banner"></div>
+<div class="totals" id="totals"></div>
+<div class="machines" id="machines"></div>
+
+<script>
+const fmt = n => new Intl.NumberFormat('th-TH').format(Math.round(n || 0));
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mmss = s => {
+  s = Math.max(0, Math.round(s));
+  return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+};
+
+function stat(k, v) {
+  return `<div class="stat"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`;
+}
+
+async function refresh() {
+  let d;
+  try { d = await (await fetch('/api/fleet')).json(); }
+  catch { document.getElementById('head').textContent = 'ต่อ hub ไม่ได้'; return; }
+
+  const t = d.totals || {};
+  document.getElementById('head').textContent =
+    `${d.online}/${d.total} เครื่องออนไลน์ · อัปเดต ` +
+    new Date().toLocaleTimeString('th-TH', {hour12:false});
+
+  document.getElementById('banner').innerHTML = d.challenges_pending
+    ? `<div class="banner">🧩 มีจิ๊กซอว์ค้างอยู่ ${d.challenges_pending} เครื่อง — ไปเลื่อนด่วน</div>`
+    : (d.offline || []).length
+      ? `<div class="banner">⚠️ ไม่ได้ข่าวจาก: ${d.offline.map(esc).join(', ')}</div>`
+      : '';
+
+  document.getElementById('totals').innerHTML = [
+    stat('ยอดขายรวม', fmt(t.revenue) + ' ฿'),
+    stat('ออเดอร์รวม', fmt(t.orders)),
+    stat('ค่าแอดรวม', fmt(t.ad_spend) + ' ฿'),
+    stat('ต้นทุน/ออเดอร์', t.cpa ? fmt(t.cpa) + ' ฿' : '—'),
+    stat('จิ๊กซอว์ที่พลาด', fmt(t.missed_challenges)),
+    stat('คอมเมนท์รวม', fmt(t.comments)),
+  ].join('');
+
+  const machines = d.machines || [];
+  document.getElementById('machines').innerHTML = machines.length
+    ? machines.map(card).join('')
+    : '<div class="empty">ยังไม่มีเครื่องไหนส่งสถานะเข้ามา</div>';
+}
+
+function card(m) {
+  const s = m.snapshot || {};
+  const stream = s.stream || {}, v = s.verification || {},
+        ads = s.ads || {}, b = s.baskets || {}, c = s.comments || {};
+  const ch = v.current;
+
+  let cls = 'm';
+  if (ch) cls += ' alarm';
+  else if (!m.online) cls += ' offline';
+  else if (!stream.is_live) cls += ' down';
+
+  const badge = !m.online
+    ? '<span class="pill warn">ไม่ได้ข่าว</span>'
+    : stream.is_live
+      ? '<span class="pill ok">ไลฟ์อยู่</span>'
+      : '<span class="pill bad">จอดำ</span>';
+
+  const countdown = ch
+    ? `<div class="countdown ${ch.seconds_left > 120 ? 'calm' : ''}">🧩 เหลือ ${mmss(ch.seconds_left)}</div>`
+    : '';
+
+  const pinned = b.pinned;
+  const rows = [
+    ['ปักตะกร้าอยู่', pinned ? esc(pinned.name) : '—'],
+    ['คนดู', fmt(stream.viewers)],
+    ['ยอดขาย', `${fmt(b.total_revenue)} ฿ / ${fmt(b.total_orders)} ออเดอร์`],
+    ['ค่าแอด', `${fmt(ads.spend)} ฿`],
+    ['ต้นทุน/ออเดอร์', ads.cpa ? `${fmt(ads.cpa)} ฿` : '—'],
+    ['จิ๊กซอว์', `ทัน ${fmt(v.solved)}/${fmt(v.total)} · พลาด ${fmt(v.missed)}`],
+    ['คอมเมนท์', `${fmt(c.received)} ตอบ ${fmt(c.replied)}`],
+    ['อัปเดตล่าสุด', `${fmt(m.age_seconds)} วิที่แล้ว`],
+  ];
+
+  return `<div class="${cls}">
+    <h2><span>${esc(m.machine)}</span>${badge}</h2>
+    ${countdown}
+    ${rows.map(([k, val]) =>
+      `<div class="row"><span>${esc(k)}</span><span>${val}</span></div>`).join('')}
+  </div>`;
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

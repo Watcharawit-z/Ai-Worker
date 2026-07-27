@@ -9,6 +9,8 @@ import random
 from collections import deque
 from dataclasses import dataclass, field
 
+from .cues import CueSheet
+
 
 @dataclass(slots=True)
 class Segment:
@@ -18,9 +20,21 @@ class Segment:
     path: str
     duration_seconds: float
     sku: str = ""
+    """สินค้าหลักของท่อนนี้ — ใช้เมื่อไม่ได้ทำคิวชีตละเอียด"""
+
+    cues: CueSheet = field(default_factory=lambda: CueSheet([]))
+    """คิวชีตในท่อน — บอกว่านาทีไหนพูดถึงสินค้าตัวไหน (ละเอียดกว่า sku)"""
+
     tags: list[str] = field(default_factory=list)
     weight: float = 1.0
     """น้ำหนักการสุ่ม — ท่อนที่ขายดีตั้งสูงไว้ให้ออกบ่อยขึ้น"""
+
+    def sku_at(self, seconds: float) -> str:
+        """สินค้าที่กำลังถูกนำเสนอ ณ วินาทีนั้นของท่อนนี้"""
+        return self.cues.sku_at(seconds) if self.cues else self.sku
+
+    def all_skus(self) -> list[str]:
+        return self.cues.skus() if self.cues else ([self.sku] if self.sku else [])
 
     def as_dict(self) -> dict:
         return {
@@ -29,6 +43,7 @@ class Segment:
             "duration_seconds": self.duration_seconds,
             "sku": self.sku,
             "tags": list(self.tags),
+            "cue_count": len(self.cues.cues),
         }
 
 
@@ -62,6 +77,7 @@ class SegmentPlaylist:
                 path=str(r.get("path", "")),
                 duration_seconds=float(r.get("duration_seconds", 0)),
                 sku=str(r.get("sku", "")),
+                cues=CueSheet.from_config(r.get("cues"), str(r.get("sku", ""))),
                 tags=list(r.get("tags", []) or []),
                 weight=float(r.get("weight", 1.0)),
             )

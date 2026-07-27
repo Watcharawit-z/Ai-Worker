@@ -32,23 +32,38 @@ compliance:
     - "เกรดเอ"
   risky_claim_patterns: []          # regex เพิ่มเติม (ถ้าไม่ถนัดปล่อยว่างไว้)
 
+# ตะกร้าเดินตามสิ่งที่คนในคลิปพูด ไม่ได้เดินตามเวลาหรือยอดขาย
 baskets:
-  queue_size: 10
-  min_minutes_per_basket: 20      # ยังไม่ถึงเวลานี้ ห้ามเปลี่ยนตะกร้า
-  evaluate_after_minutes: 60      # "สังเกตยอดขายภายใน 1 ชม." ตามสไลด์ → ตัดสินตอนนี้
-  max_minutes_per_basket: 90      # ถึงเพดานนี้เปลี่ยนแน่นอน ต้องมากกว่าค่าประเมินข้างบน
-  min_orders_to_continue: 3       # ได้น้อยกว่านี้ใน 1 ชม. = เปลี่ยนตะกร้า
-  rotate_on_poor_performance: true
+  pin_check_seconds: 5            # เช็คบ่อยแค่ไหนว่าปักตรงกับที่พูดอยู่ไหม
+  pin_lead_seconds: 2             # ปักล่วงหน้ากี่วินาที (กันปักช้ากว่าปาก)
+  alert_on_missing_sku: true      # คลิปพูดถึงของที่ไม่มีตะกร้า → เตือนคน
 
+# ไลฟ์นายหน้า: ต้นทุนต่อการซื้อคือตัวชี้ขาด ไม่ใช่ยอดขายรวม
+# แอดผูกกับ "ไลฟ์" ไม่ใช่ "ตะกร้า" — เปลี่ยนตะกร้าไม่ต้องแตะแอด
 ads:
   enabled: true
-  starting_budget: 300            # งบเริ่มต้นต่อตะกร้า (บาท)
-  max_budget: 3000
-  scale_step: 1.5                 # ติดแล้วคูณงบเท่าไหร่
-  target_roas: 3.0                # ถึงนี่ = สเกล
-  kill_roas: 1.2                  # ต่ำกว่านี้ = ปิดแอด
-  min_spend_before_judging: 150   # ใช้ยังไม่ถึงนี่ อย่าเพิ่งตัดสิน
+  campaign_type: gmv_max_live
+  starting_budget: 300            # งบเริ่มต้นต่อไลฟ์ (บาท)
+  max_budget: 2000
+  scale_step: 1.3
+  max_cpa: 120                    # ต้นทุนต่อการซื้อเกินนี้ = แอดแพง ต้องเปลี่ยน
+  target_cpa: 70                  # ถูกกว่านี้ = คุ้ม สเกลได้
+  min_spend_before_judging: 150
+  min_purchases_before_judging: 2
+  grace_minutes_after_launch: 20  # แอดเพิ่งขึ้น อย่าเพิ่งตัดสิน
+  relaunch_cooldown_minutes: 30   # กันขึ้น-ปิดวนไม่จบ
+  max_relaunches_per_live: 3      # เปลี่ยนครบนี่แล้วยังแพง = หยุด รอคน
   check_interval_seconds: 60
+
+# ปริศนายืนยันตัวตน (จิ๊กซอว์) ที่ TikTok เด้งมาตรวจว่ามีคนเฝ้าอยู่
+# ระบบ "ตรวจจับและปลุกคน" เท่านั้น ไม่เลื่อนแทน — ดู docs/PLAYBOOK.md
+verification:
+  enabled: true
+  machine_name: "pc-01"           # ตั้งให้ไม่ซ้ำกันทุกเครื่อง
+  deadline_seconds: 300           # 5 นาทีตามที่ TikTok ให้
+  poll_seconds: 3                 # อ่านจอทุกกี่วินาที
+  min_confidence: 0.6
+  watcher: mock                   # mock | template (template ต้อง calibrate ก่อน)
 
 stream:
   health_interval_seconds: 5
@@ -76,6 +91,13 @@ adapters:
       unique_id: "@your_account"
     mock_comments:
       rate_per_minute: 40   # จำลองคอมเมนท์เข้ากี่อันต่อนาที
+    mock_screen:
+      every_seconds: 3600   # จำลองจิ๊กซอว์โผล่ทุกกี่วินาที
+      visible_seconds: 300
+    screen:                 # ใช้กับ watcher: template
+      region: [0, 0, 1920, 1080]
+      templates: []         # เก็บด้วย python scripts/calibrate_screen.py
+      threshold: 0.82
     telegram: {}            # อ่านจาก TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
     webhook: {}             # อ่านจาก NOTIFY_WEBHOOK_URL
 
@@ -83,6 +105,16 @@ web:
   enabled: true
   host: "127.0.0.1"
   port: 8765
+
+# คุมหลายเครื่อง — ดู docs/FLEET.md
+fleet:
+  role: standalone        # standalone | worker | hub
+  machine_name: "pc-01"
+  hub_url: ""             # worker: ที่อยู่ hub เช่น http://192.168.1.50:8700
+  hub_host: "0.0.0.0"     # hub: รับจากทุกเครื่องในวง
+  hub_port: 8700
+  report_seconds: 5
+  offline_after_seconds: 30
 
 products_path: "config/knowledge/products.yaml"
 baskets_path: "config/baskets.yaml"

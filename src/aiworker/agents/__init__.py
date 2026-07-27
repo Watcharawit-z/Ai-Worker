@@ -7,6 +7,7 @@ from .comment_agent import CommentAgent
 from .compliance_agent import ComplianceAgent
 from .live_watcher import LiveWatcherAgent
 from .notifier import NotifierAgent
+from .verification_agent import VerificationAgent
 
 __all__ = [
     "Agent",
@@ -16,4 +17,5 @@ __all__ = [
     "ComplianceAgent",
     "LiveWatcherAgent",
     "NotifierAgent",
+    "VerificationAgent",
 ]

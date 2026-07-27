@@ -15,6 +15,7 @@ from .adapters import (
     build_comment_source,
     build_notifiers,
     build_player,
+    build_screen_watcher,
     build_shop,
 )
 from .agents import (
@@ -25,9 +26,10 @@ from .agents import (
     ComplianceAgent,
     LiveWatcherAgent,
     NotifierAgent,
+    VerificationAgent,
 )
 from .bus import EventBus
-from .domain.basket import BasketQueue
+from .domain.basket import BasketBoard
 from .domain.segments import SegmentPlaylist
 from .events import CommentIn, Severity
 from .llm import LLMClient
@@ -51,7 +53,7 @@ class Shift:
             enabled=settings.llm.enabled,
         )
 
-        baskets = BasketQueue.from_config(
+        baskets = BasketBoard.from_config(
             load_yaml_list(settings.baskets_path, "baskets")
         )
         playlist = SegmentPlaylist.from_config(
@@ -68,6 +70,7 @@ class Shift:
         self.comment_sender = build_comment_sender(settings)
         self.shop = build_shop(settings)
         self.ads = build_ads(settings)
+        self.screen = build_screen_watcher(settings)
         self.notifiers = build_notifiers(settings)
 
         self.agents: list[Agent] = [
@@ -80,6 +83,10 @@ class Shift:
                 self.bus, self.state, settings, self.llm, self.comment_sender, self.knowledge
             ),
         ]
+        if settings.verification.enabled:
+            self.agents.insert(
+                1, VerificationAgent(self.bus, self.state, settings, self.screen)
+            )
         self._tasks: list[asyncio.Task] = []
 
     # ---------------- lifecycle ----------------
@@ -178,12 +185,15 @@ class Shift:
 
     def summary_line(self) -> str:
         b = self.state.baskets.summary()
+        ads = self.state.ads
+        v = self.state.verification
         return (
             f"ยอดขาย {b['total_revenue']:.0f}฿ / {b['total_orders']} ออเดอร์ | "
-            f"ค่าแอด {b['total_ad_spend']:.0f}฿ | "
+            f"ค่าแอด {ads.spend:.0f}฿ ต้นทุนต่อออเดอร์ {ads.cpa:.0f}฿ | "
             f"คอมเมนท์ {self.state.comment_count} ตอบ {self.state.reply_count} "
             f"ส่งต่อคน {self.state.escalation_count} | "
-            f"ความเสี่ยงที่เจอ {self.state.compliance.strikes} ครั้ง"
+            f"จิ๊กซอว์ {v.solved}/{v.total} ทัน พลาด {v.missed} | "
+            f"ความเสี่ยงของเรา {self.state.compliance.strikes} ครั้ง"
         )
 
     def snapshot(self) -> dict[str, Any]:
