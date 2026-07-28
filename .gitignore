@@ -7,3 +7,4 @@ media/
 *.log
 .pytest_cache/
 .DS_Store
+runtime/

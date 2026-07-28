@@ -67,6 +67,37 @@ def _check(shift: Shift) -> int:
     for problem in cue_problems[:8]:
         print(f"       ↳ {problem}")
 
+    # ── เพดานค่าแอด: ตัวเลขที่ผิดแล้วเผาเงินเร็วที่สุดในระบบ ──
+    board = shift.state.baskets
+    missing = board.missing_commission()
+    commissions = [b.commission for b in board.baskets if b.commission > 0]
+    if commissions:
+        lowest = min(commissions)
+        ceiling = lowest * s.ads.cpa_ceiling_ratio
+        line(
+            "ค่าคอมต่อชิ้น",
+            f"{lowest:.0f}-{max(commissions):.0f} บาท "
+            f"→ เพดานค่าแอดเริ่มต้น {ceiling:.0f} บาท/ออเดอร์",
+            not missing,
+        )
+    else:
+        line("ค่าคอมต่อชิ้น", "ยังไม่ได้กรอกเลยสักใบ", False)
+
+    if missing:
+        print(f"       ↳ ยังไม่ได้กรอก commission {len(missing)} ใบ:")
+        for basket in missing[:5]:
+            print(f"          {basket.sku:<12} {basket.name}")
+        print(
+            f"       ↳ ระบบจะใช้ค่าเริ่มต้น {s.ads.default_commission:.0f} บาทแทน "
+            "ซึ่งอาจสูงกว่าจริง แล้วยอมจ่ายค่าแอดแพงเกินไป"
+        )
+
+    line(
+        "เบรกกันขาดทุน",
+        f"หยุดยิงแอดเมื่อขาดทุนสะสมถึง {s.ads.max_loss_baht:.0f} บาท",
+        s.ads.max_loss_baht > 0,
+    )
+
     line(
         "ตัวเฝ้าจิ๊กซอว์",
         f"{s.verification.watcher} (ให้เวลา {s.verification.deadline_seconds / 60:.0f} นาที)"
@@ -110,6 +141,21 @@ def _check(shift: Shift) -> int:
         print("\n  ตะกร้าที่ไม่มีคลิปพูดถึงเลย (จะไม่ถูกปักทั้งกะ):")
         for basket in never:
             print(f"     {basket.sku:<12} {basket.name}")
+
+    if commissions:
+        print("\n  เพดานค่าแอดของสินค้าแต่ละตัว (จ่ายเกินนี้ = ขาดทุนต่อออเดอร์):")
+        for basket in sorted(shift.state.baskets.baskets, key=lambda b: b.commission):
+            if not basket.commission:
+                continue
+            cap = basket.commission * s.ads.cpa_ceiling_ratio
+            print(
+                f"     {basket.sku:<12} คอม {basket.commission:>3.0f}฿ "
+                f"→ ค่าแอดไม่เกิน {cap:>5.1f}฿/ออเดอร์   {basket.name}"
+            )
+        print(
+            "\n   ระบบใช้ค่าคอมของสินค้าที่ขายได้จริงมาคิดเพดานแบบถ่วงน้ำหนัก\n"
+            "   ตอนยังไม่มีออเดอร์จะใช้ตัวที่ค่าคอมต่ำสุด (ระวังไว้ก่อน)"
+        )
 
     print(
         "\n" + ("พร้อมเข้ากะ" if ok else "ยังขาดบางอย่าง — ดูรายการ ✗ ด้านบน") + "\n"

@@ -86,7 +86,7 @@ def _urgency(row: dict[str, Any]) -> tuple:
 
 
 def _totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    revenue = orders = spend = 0.0
+    revenue = orders = spend = commission = 0.0
     missed = comments = 0
     for row in rows:
         snap = row["snapshot"]
@@ -94,12 +94,15 @@ def _totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
         ads = snap.get("ads") or {}
         verification = snap.get("verification") or {}
         revenue += float(baskets.get("total_revenue", 0) or 0)
+        commission += float(baskets.get("commission_earned", 0) or 0)
         orders += float(baskets.get("total_orders", 0) or 0)
         spend += float(ads.get("spend", 0) or 0)
         missed += int(verification.get("missed", 0) or 0)
         comments += int((snap.get("comments") or {}).get("received", 0) or 0)
     return {
         "revenue": round(revenue, 2),
+        "commission": round(commission, 2),
+        "net_profit": round(commission - spend, 2),
         "orders": int(orders),
         "ad_spend": round(spend, 2),
         "cpa": round(spend / orders, 2) if orders else 0.0,

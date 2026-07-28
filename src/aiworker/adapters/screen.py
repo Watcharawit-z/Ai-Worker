@@ -27,6 +27,8 @@ class ScreenReading:
     challenge_visible: bool = False
     confidence: float = 0.0
     detail: str = ""
+    snapshot_path: str = ""
+    """ภาพหน้าจอตอนเจอปริศนา — แนบไปกับการแจ้งเตือนให้ดูจากมือถือได้"""
 
 
 class MockScreenWatcher:
@@ -74,12 +76,15 @@ class TemplateScreenWatcher:
         templates: list[str] | None = None,
         threshold: float = 0.82,
         downscale: int = 4,
+        snapshot_dir: str = "runtime/snapshots",
         **_: Any,
     ) -> None:
         self.region = tuple(region) if region else None
         self.template_paths = list(templates or [])
         self.threshold = threshold
         self.downscale = max(1, downscale)
+        self.snapshot_dir = Path(snapshot_dir)
+        self._last_snapshot = ""
         self._sct: Any = None
         self._templates: list[tuple[str, list[float]]] = []
         self._warned = False
@@ -133,7 +138,8 @@ class TemplateScreenWatcher:
             return ScreenReading(False, 0.0, "ตัวเฝ้าจอไม่พร้อม")
 
         try:
-            current = self._grab_signature()
+            image = self._grab()
+            current = _signature(image, self.downscale)
         except Exception as exc:  # noqa: BLE001
             log.warning("อ่านหน้าจอไม่สำเร็จ: %s", exc)
             return ScreenReading(False, 0.0, str(exc))
@@ -144,19 +150,46 @@ class TemplateScreenWatcher:
             if score > best_score:
                 best_score, best_name = score, name
 
-        if best_score >= self.threshold:
-            return ScreenReading(True, best_score, f"ตรงกับ {Path(best_name).name}")
-        return ScreenReading(False, best_score, "")
+        if best_score < self.threshold:
+            self._last_snapshot = ""
+            return ScreenReading(False, best_score, "")
+
+        # เก็บภาพครั้งเดียวต่อการโผล่หนึ่งรอบ ไม่ต้องเขียนดิสก์ทุก 3 วินาที
+        if not self._last_snapshot:
+            self._last_snapshot = self._save_snapshot(image)
+        return ScreenReading(
+            True, best_score, f"ตรงกับ {Path(best_name).name}", self._last_snapshot
+        )
+
+    def _save_snapshot(self, image: Any) -> str:
+        """บันทึกภาพจอตอนเจอปริศนา เพื่อแนบไปกับการแจ้งเตือน"""
+        try:
+            self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+            path = self.snapshot_dir / f"challenge_{int(time.time())}.png"
+            image.save(path)
+            self._prune_snapshots()
+            return str(path)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("บันทึกภาพหน้าจอไม่สำเร็จ: %s", exc)
+            return ""
+
+    def _prune_snapshots(self, keep: int = 20) -> None:
+        """เก็บแค่ภาพล่าสุด — ไลฟ์ยาว ๆ ไม่งั้นดิสก์เต็ม"""
+        try:
+            shots = sorted(self.snapshot_dir.glob("challenge_*.png"))
+            for old in shots[:-keep]:
+                old.unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---------------- ภายใน ----------------
 
-    def _grab_signature(self) -> list[float]:
+    def _grab(self) -> Any:
         from PIL import Image
 
         x, y, w, h = self.region  # type: ignore[misc]
         raw = self._sct.grab({"left": x, "top": y, "width": w, "height": h})
-        image = Image.frombytes("RGB", raw.size, raw.rgb)
-        return _signature(image, self.downscale)
+        return Image.frombytes("RGB", raw.size, raw.rgb)
 
     def _signature_from_file(self, path: str) -> list[float] | None:
         try:

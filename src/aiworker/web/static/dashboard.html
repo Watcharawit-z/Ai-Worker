@@ -109,7 +109,7 @@
       <thead><tr>
         <th>#</th><th>สินค้า</th><th>สถานะ</th>
         <th class="num">ปักรวม (นาที)</th><th class="num">ครั้ง</th>
-        <th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">กำไรขั้นต้น</th>
+        <th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">ค่าคอมได้</th>
       </tr></thead>
       <tbody id="basket-table"></tbody>
     </table>
@@ -153,7 +153,8 @@ async function refresh() {
 
   document.getElementById('head').innerHTML =
     `ช่อง <b>${esc(d.channel_id)}</b> · เข้ากะมาแล้ว ${fmt(d.uptime_minutes)} นาที · ` +
-    `ยอดรวม <b>${fmt(b.total_revenue)}฿</b> จาก ${fmt(b.total_orders)} ออเดอร์ · ` +
+    `ยอดขาย ${fmt(b.total_revenue)}฿ / ค่าคอม <b>${fmt(b.commission_earned)}฿</b> ` +
+    `จาก ${fmt(b.total_orders)} ออเดอร์ · ` +
     `อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH', {hour12: false})}`;
 
   // สตรีม
@@ -165,6 +166,7 @@ async function refresh() {
     ['คนดูตอนนี้', fmt(s.viewers)],
     ['ท่อนที่เล่นอยู่', esc(s.current_segment) || '—'],
     ['เหลืออีก', `${fmt(s.seconds_remaining)} วิ`],
+    ['วนรอบที่', fmt((s.loop_count || 0) + 1)],
     ['bitrate', `${fmt(s.bitrate_kbps)} kbps`],
     ['เฟรมตกสะสม', fmt(s.dropped_frames)],
     ['เตือนล่าสุด', esc(s.last_alert) || '—'],
@@ -221,12 +223,15 @@ async function refresh() {
   cpaEl.textContent = cpa ? `${fmt(cpa)} ฿/ออเดอร์` : 'ยังไม่มีข้อมูล';
   cpaEl.style.color = !cpa ? 'var(--muted)' : cpa <= 70 ? 'var(--ok)'
     : cpa <= 120 ? 'var(--warn)' : 'var(--bad)';
+  const commission = b.commission_earned || 0;
+  const net = commission - (ads.spend || 0);
   rows('ads-rows', [
     ['แคมเปญ', esc(ads.campaign_id) || '—'],
     ['งบตั้งไว้', `${fmt(ads.budget)} ฿`],
-    ['ใช้ไปแล้ว', `${fmt(ads.spend)} ฿`],
-    ['ออเดอร์จากแอด', fmt(ads.orders)],
-    ['รายได้จากแอด', `${fmt(ads.revenue)} ฿`],
+    ['ค่าแอดที่จ่าย', `${fmt(ads.spend)} ฿`],
+    ['ค่าคอมที่ได้', `${fmt(commission)} ฿`],
+    ['<b>กำไรจริง</b>', `<b style="color:${net >= 0 ? 'var(--ok)' : 'var(--bad)'}">` +
+      `${net >= 0 ? '+' : ''}${fmt(net)} ฿</b>`],
     ['สิ่งที่ทำล่าสุด', esc(ads.last_action) || '—'],
   ]);
 
@@ -263,7 +268,7 @@ async function refresh() {
       <td class="num">${fmt(x.pin_count)}</td>
       <td class="num">${fmt(x.orders)}</td>
       <td class="num">${fmt(x.revenue)}</td>
-      <td class="num">${fmt(x.gross_margin)}</td>
+      <td class="num">${fmt(x.commission_earned)}</td>
     </tr>`).join('') || '<tr><td colspan="8" class="empty">ยังไม่มีตะกร้าในไลฟ์</td></tr>';
 
   // log

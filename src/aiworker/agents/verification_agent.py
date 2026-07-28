@@ -46,6 +46,7 @@ class VerificationAgent(Agent):
             min_confidence=settings.verification.min_confidence,
         )
         self._ready = False
+        self._snapshot = ""
 
     async def on_start(self) -> None:
         self._ready = await self.watcher.connect()
@@ -77,6 +78,7 @@ class VerificationAgent(Agent):
         reading = await self.watcher.read()
 
         if reading.challenge_visible:
+            self._snapshot = reading.snapshot_path
             fresh = self.tracker.on_detected(reading.confidence)
             if fresh is not None:
                 self.state.verification.total += 1
@@ -88,6 +90,7 @@ class VerificationAgent(Agent):
             self._escalate()
         else:
             solved = self.tracker.on_cleared()
+            self._snapshot = ""
             if solved is not None:
                 self.state.verification.solved += 1
                 self.emit(
@@ -153,4 +156,5 @@ class VerificationAgent(Agent):
                 "ถ้าไม่ทันจะโดนเตือนหรือหลุดไลฟ์",
                 severity,
                 needs_human=True,
+                image_path=self._snapshot,
             )

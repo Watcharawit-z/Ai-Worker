@@ -302,6 +302,8 @@ class Notification(Event):
     title: str = ""
     body: str = ""
     needs_human: bool = False
+    image_path: str = ""
+    """แนบภาพหน้าจอไปด้วยได้ — ใช้กับจิ๊กซอว์ จะได้ดูจากมือถือแล้วรู้เลยว่าของจริงไหม"""
 
 
 @dataclass(slots=True)

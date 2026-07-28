@@ -17,6 +17,9 @@ class Basket:
     name: str
     sku: str
     price: float
+    commission: float = 0.0
+    """ค่าคอมที่ได้จริงต่อชิ้น (บาท) — ตัวเลขนี้กำหนดว่าจ่ายค่าแอดได้เท่าไหร่"""
+
     cost: float = 0.0
     stock: int = 0
     orders: int = 0
@@ -34,8 +37,19 @@ class Basket:
         return self.last_pinned_at is not None
 
     @property
+    def commission_earned(self) -> float:
+        """ค่าคอมที่ได้จากตะกร้าใบนี้ — นี่คือรายได้จริงของนายหน้า ไม่ใช่ยอดขาย"""
+        return self.commission * self.orders
+
+    @property
     def gross_margin(self) -> float:
-        """กำไรขั้นต้นก่อนหักค่าแอด (ค่าแอดเป็นของทั้งไลฟ์ ไม่ใช่ของตะกร้าใบเดียว)"""
+        """กำไรขั้นต้นก่อนหักค่าแอด (ค่าแอดเป็นของทั้งไลฟ์ ไม่ใช่ของตะกร้าใบเดียว)
+
+        ไลฟ์นายหน้าไม่ได้ถือสต็อกเอง รายได้คือค่าคอม
+        ถ้ากรอก commission มาก็ใช้ตัวนั้น ถ้าไม่กรอกค่อยคิดจากราคา-ต้นทุน
+        """
+        if self.commission:
+            return self.commission_earned
         return self.revenue - (self.cost * self.orders)
 
     def as_dict(self) -> dict:
@@ -46,6 +60,8 @@ class Basket:
             "price": self.price,
             "orders": self.orders,
             "revenue": round(self.revenue, 2),
+            "commission": self.commission,
+            "commission_earned": round(self.commission_earned, 2),
             "gross_margin": round(self.gross_margin, 2),
             "stock": self.stock,
             "pinned_minutes": round(self.pinned_seconds / 60.0, 1),
@@ -71,6 +87,7 @@ class BasketBoard:
                 name=r.get("name", "ไม่ระบุชื่อ"),
                 sku=str(r.get("sku", "")),
                 price=float(r.get("price", 0)),
+                commission=float(r.get("commission", 0)),
                 cost=float(r.get("cost", 0)),
                 stock=int(r.get("stock", 0)),
                 notes=r.get("notes", ""),
@@ -132,6 +149,28 @@ class BasketBoard:
         if basket.stock > 0:
             basket.stock = max(0, basket.stock - orders)
 
+    def commission_earned(self) -> float:
+        """ค่าคอมรวมที่ได้ทั้งไลฟ์ — เอาไปหักค่าแอดจะได้กำไรจริง"""
+        return sum(b.commission_earned for b in self.baskets)
+
+    def blended_commission(self, default: float) -> float:
+        """ค่าคอมเฉลี่ยถ่วงน้ำหนักตามออเดอร์ที่ขายได้จริง
+
+        ใช้กำหนดเพดานค่าแอด — ถ้ายังไม่มีออเดอร์ ใช้ค่าคอมต่ำสุดของตะกร้าที่มี
+        เพราะช่วงแรกไม่รู้ว่าจะขายตัวไหนได้ ต้องคิดแบบระวังไว้ก่อน
+        """
+        sold = [b for b in self.baskets if b.orders > 0 and b.commission > 0]
+        if sold:
+            total_orders = sum(b.orders for b in sold)
+            return sum(b.commission * b.orders for b in sold) / total_orders
+
+        available = [b.commission for b in self.baskets if b.commission > 0]
+        return min(available) if available else default
+
+    def missing_commission(self) -> list[Basket]:
+        """ตะกร้าที่ยังไม่ได้กรอกค่าคอม — เสี่ยงคำนวณเพดานแอดผิด"""
+        return [b for b in self.baskets if not b.commission]
+
     def out_of_stock(self) -> list[Basket]:
         return [b for b in self.baskets if b.stock == 0 and b.pin_count > 0]
 
@@ -149,5 +188,6 @@ class BasketBoard:
             "all": [b.as_dict() for b in self.baskets],
             "total_revenue": round(sum(b.revenue for b in self.baskets), 2),
             "total_orders": sum(b.orders for b in self.baskets),
+            "commission_earned": round(self.commission_earned(), 2),
             "never_pinned": [b.name for b in self.never_pinned()],
         }

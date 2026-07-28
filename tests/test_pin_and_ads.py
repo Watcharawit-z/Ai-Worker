@@ -21,9 +21,10 @@ from aiworker.settings import Settings
 from aiworker.state import ShiftState
 
 BASKETS = [
-    {"id": "b1", "name": "เซรั่ม", "sku": "S1", "price": 390, "stock": 100},
-    {"id": "b2", "name": "กันแดด", "sku": "S2", "price": 290, "stock": 100},
-    {"id": "b3", "name": "ลิป", "sku": "S3", "price": 199, "stock": 100},
+    # ค่าคอมนายหน้าจริง 10-40 บาท/ชิ้น — ตัวเลขนี้กำหนดเพดานค่าแอดทั้งหมด
+    {"id": "b1", "name": "เซรั่ม", "sku": "S1", "price": 390, "commission": 40, "stock": 100},
+    {"id": "b2", "name": "กันแดด", "sku": "S2", "price": 290, "commission": 20, "stock": 100},
+    {"id": "b3", "name": "ลิป", "sku": "S3", "price": 199, "commission": 10, "stock": 100},
 ]
 
 LONG_CLIP = [
@@ -277,9 +278,57 @@ def ads_agent(state: ShiftState, ads: FakeAds, **overrides) -> AdsAgent:
     settings.ads.grace_minutes_after_launch = 0
     settings.ads.min_spend_before_judging = 100
     settings.ads.min_purchases_before_judging = 2
+    settings.ads.max_loss_baht = 100_000  # ปิดเบรกฉุกเฉินไว้ก่อนถ้าไม่ได้เทสมัน
     for key, value in overrides.items():
         setattr(settings.ads, key, value)
     return AdsAgent(EventBus(), state, settings, ads)
+
+
+# ---------------------------------------------------------------- เพดานจากค่าคอม
+
+
+def test_ceiling_is_derived_from_the_commission_actually_earned():
+    """หัวใจของไลฟ์นายหน้า: จ่ายค่าแอดเกินค่าคอม = ยิ่งขายยิ่งเจ๊ง"""
+    state = make_state()
+    agent = ads_agent(state, FakeAds(), cpa_ceiling_ratio=0.6)
+
+    # ยังไม่มีออเดอร์ → ใช้ค่าคอมต่ำสุด (10฿) คิดแบบระวังไว้ก่อน
+    assert agent._commission() == pytest.approx(10.0)
+    assert agent._max_cpa() == pytest.approx(6.0)
+
+    # ขายตัวค่าคอมสูงได้ → เพดานขยับขึ้นตามจริง
+    state.baskets.record_sale("S1", 10, 3900.0)
+    assert agent._commission() == pytest.approx(40.0)
+    assert agent._max_cpa() == pytest.approx(24.0)
+
+
+def test_blended_commission_weights_by_orders_not_by_price():
+    state = make_state()
+    agent = ads_agent(state, FakeAds())
+    state.baskets.record_sale("S1", 1, 390.0)   # คอม 40
+    state.baskets.record_sale("S3", 9, 1791.0)  # คอม 10
+    # ขายตัวคอมต่ำเยอะกว่า ค่าเฉลี่ยต้องเอนไปทางต่ำ
+    assert agent._commission() == pytest.approx(13.0)
+
+
+def test_override_wins_when_the_owner_sets_it_manually():
+    state = make_state()
+    agent = ads_agent(state, FakeAds(), max_cpa_override=15.0)
+    state.baskets.record_sale("S1", 10, 3900.0)
+    assert agent._max_cpa() == pytest.approx(15.0)
+
+
+def test_net_profit_counts_commission_not_revenue():
+    """ยอดขาย 3,900฿ ฟังดูดี แต่นายหน้าได้จริงแค่ค่าคอม"""
+    state = make_state()
+    agent = ads_agent(state, FakeAds())
+    state.baskets.record_sale("S1", 10, 3900.0)  # ค่าคอม 400฿
+    state.ads.spend = 500.0
+    assert state.baskets.summary()["total_revenue"] == 3900.0
+    assert agent._net_profit() == pytest.approx(-100.0), "ขายได้เยอะแต่ขาดทุนจริง"
+
+
+# ---------------------------------------------------------------- แอด
 
 
 @pytest.mark.asyncio
@@ -303,30 +352,32 @@ async def test_one_campaign_per_live_not_per_basket():
 
 
 @pytest.mark.asyncio
-async def test_expensive_ad_is_replaced_not_just_killed():
+async def test_ad_costing_more_than_the_commission_is_replaced():
     state = make_state()
     ads = FakeAds()
-    agent = ads_agent(state, ads, max_cpa=100)
+    agent = ads_agent(state, ads, cpa_ceiling_ratio=0.6)
     await agent.start()
     try:
-        # ใช้ไป 600 บาท ได้ 3 ออเดอร์ = 200 บาท/ออเดอร์ แพงเกินเพดาน 100
-        ads.metrics = AdMetricsSnapshot(spend=600.0, orders=3, revenue=900.0)
+        # ขายตัวคอม 20฿ → เพดาน 12฿ แต่จ่ายจริง 25฿/ออเดอร์
+        state.baskets.record_sale("S2", 10, 2900.0)
+        ads.metrics = AdMetricsSnapshot(spend=250.0, orders=10, revenue=2900.0)
         await agent.tick()
         assert ads.paused == ["cmp1"]
-        assert len(ads.created) == 2, "ปิดตัวแพงแล้วต้องขึ้นตัวใหม่ให้ไลฟ์เดิม"
+        assert len(ads.created) == 2
     finally:
         await agent.stop()
 
 
 @pytest.mark.asyncio
-async def test_cheap_ad_gets_scaled():
+async def test_ad_well_under_the_commission_gets_scaled():
     state = make_state()
     ads = FakeAds()
-    agent = ads_agent(state, ads, target_cpa=80, scale_step=1.3, starting_budget=300)
+    agent = ads_agent(state, ads, cpa_target_ratio=0.35, scale_step=1.3, starting_budget=300)
     await agent.start()
     try:
-        # 300 บาท 6 ออเดอร์ = 50 บาท/ออเดอร์ ถูกกว่าเป้า
-        ads.metrics = AdMetricsSnapshot(spend=300.0, orders=6, revenue=1800.0)
+        # คอม 40฿ → เป้า 14฿ จ่ายจริง 10฿/ออเดอร์ = คุ้มมาก
+        state.baskets.record_sale("S1", 20, 7800.0)
+        ads.metrics = AdMetricsSnapshot(spend=200.0, orders=20, revenue=7800.0)
         await agent.tick()
         assert ads.budgets == [pytest.approx(390.0)]
         assert ads.paused == []
@@ -338,10 +389,9 @@ async def test_cheap_ad_gets_scaled():
 async def test_burning_money_with_zero_orders_is_caught():
     state = make_state()
     ads = FakeAds()
-    agent = ads_agent(state, ads, max_cpa=100, min_purchases_before_judging=2)
+    agent = ads_agent(state, ads, min_purchases_before_judging=2)
     await agent.start()
     try:
-        # ใช้ไป 250 บาทยังไม่ได้ออเดอร์เลย — ต่อให้ได้อีก 2 ออเดอร์ก็เกินเพดานแล้ว
         ads.metrics = AdMetricsSnapshot(spend=250.0, orders=0, revenue=0.0)
         await agent.tick()
         assert ads.paused == ["cmp1"]
@@ -353,7 +403,7 @@ async def test_burning_money_with_zero_orders_is_caught():
 async def test_fresh_ad_is_left_alone_during_the_grace_period():
     state = make_state()
     ads = FakeAds()
-    agent = ads_agent(state, ads, grace_minutes_after_launch=20, max_cpa=50)
+    agent = ads_agent(state, ads, grace_minutes_after_launch=20)
     await agent.start()
     try:
         ads.metrics = AdMetricsSnapshot(spend=900.0, orders=1, revenue=300.0)
@@ -367,14 +417,15 @@ async def test_fresh_ad_is_left_alone_during_the_grace_period():
 async def test_cooldown_stops_launch_kill_launch_loops():
     state = make_state()
     ads = FakeAds()
-    agent = ads_agent(state, ads, max_cpa=100, relaunch_cooldown_minutes=30)
+    agent = ads_agent(state, ads, relaunch_cooldown_minutes=30)
     await agent.start()
     try:
-        ads.metrics = AdMetricsSnapshot(spend=600.0, orders=3, revenue=900.0)
+        state.baskets.record_sale("S2", 10, 2900.0)
+        ads.metrics = AdMetricsSnapshot(spend=250.0, orders=10, revenue=2900.0)
         await agent.tick()
         assert len(ads.created) == 2
 
-        await agent.tick()  # ยังแพงอยู่ แต่เพิ่งเปลี่ยนไป
+        await agent.tick()
         assert len(ads.created) == 2, "ต้องรอ cooldown ก่อนเปลี่ยนอีกครั้ง"
     finally:
         await agent.stop()
@@ -388,22 +439,73 @@ async def test_gives_up_and_calls_a_human_after_repeated_failures():
     settings = Settings()
     settings.ads.grace_minutes_after_launch = 0
     settings.ads.min_spend_before_judging = 100
-    settings.ads.max_cpa = 100
+    settings.ads.max_loss_baht = 100_000
     settings.ads.relaunch_cooldown_minutes = 0
     settings.ads.max_relaunches_per_live = 2
     agent = AdsAgent(bus, state, settings, ads)
     notes = bus.subscribe("notify", name="n")
     await agent.start()
     try:
-        ads.metrics = AdMetricsSnapshot(spend=600.0, orders=3, revenue=900.0)
+        state.baskets.record_sale("S2", 10, 2900.0)
+        ads.metrics = AdMetricsSnapshot(spend=250.0, orders=10, revenue=2900.0)
         for _ in range(4):
             agent._killed_at = 0.0
             await agent.tick()
 
         assert state.ads.campaign_id == ""
-        bodies = [
-            notes.queue.get_nowait() for _ in range(notes.queue.qsize())
-        ]
+        bodies = [notes.queue.get_nowait() for _ in range(notes.queue.qsize())]
         assert any(n.needs_human for n in bodies), "ยอมแพ้แล้วต้องเรียกคน"
+    finally:
+        await agent.stop()
+
+
+# ---------------------------------------------------------------- เบรกฉุกเฉิน
+
+
+@pytest.mark.asyncio
+async def test_cumulative_loss_halts_ads_even_if_cpa_looks_fine():
+    """กันเจ๊ง: ต่อให้ CPA ผ่านเกณฑ์ ถ้าขาดทุนสะสมถึงเพดานต้องหยุด"""
+    state = make_state()
+    ads = FakeAds()
+    bus = EventBus()
+    settings = Settings()
+    settings.ads.grace_minutes_after_launch = 0
+    settings.ads.min_spend_before_judging = 100
+    settings.ads.max_loss_baht = 500
+    agent = AdsAgent(bus, state, settings, ads)
+    notes = bus.subscribe("notify", name="n")
+    await agent.start()
+    try:
+        # คอม 40฿ x 5 ออเดอร์ = ได้ 200฿ แต่จ่ายค่าแอดไป 800฿
+        state.baskets.record_sale("S1", 5, 1950.0)
+        ads.metrics = AdMetricsSnapshot(spend=800.0, orders=5, revenue=1950.0)
+        await agent.tick()
+
+        assert state.ads.campaign_id == ""
+        assert ads.paused == ["cmp1"]
+        assert len(ads.created) == 1, "หยุดแล้วต้องไม่ขึ้นตัวใหม่"
+        bodies = [notes.queue.get_nowait() for _ in range(notes.queue.qsize())]
+        assert any(n.needs_human for n in bodies)
+    finally:
+        await agent.stop()
+
+
+@pytest.mark.asyncio
+async def test_halt_is_permanent_for_the_rest_of_the_live():
+    state = make_state()
+    ads = FakeAds()
+    agent = ads_agent(state, ads, max_loss_baht=300)
+    await agent.start()
+    try:
+        state.baskets.record_sale("S3", 2, 398.0)  # คอม 10 x 2 = 20฿
+        ads.metrics = AdMetricsSnapshot(spend=500.0, orders=2, revenue=398.0)
+        await agent.tick()
+        assert agent._halted is True
+
+        # รอบถัดไปต้องไม่ทำอะไรอีก แม้ตัวเลขจะดูดีขึ้น
+        ads.metrics = AdMetricsSnapshot(spend=500.0, orders=200, revenue=39800.0)
+        await agent.tick()
+        assert len(ads.created) == 1
+        assert ads.budgets == []
     finally:
         await agent.stop()

@@ -52,4 +52,5 @@ class NotifierAgent(Agent):
             f"{prefix}{event.title}",
             f"{event.body}\n\nช่อง: {self.state.channel_id}",
             event.severity.value,
+            image_path=event.image_path,
         )

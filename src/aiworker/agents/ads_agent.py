@@ -44,6 +44,8 @@ class AdsAgent(Agent):
         self._launched_at = 0.0
         self._killed_at = 0.0
         self._relaunches = 0
+        self._halted = False
+        """ขาดทุนถึงเพดานแล้ว — ไม่ยิงแอดอีกจนกว่าจะเริ่มไลฟ์ใหม่"""
 
     async def on_start(self) -> None:
         await self.ads.connect()
@@ -68,6 +70,8 @@ class AdsAgent(Agent):
         cfg = self.settings.ads
         if not cfg.enabled:
             self.say("ปิดการยิงแอดอัตโนมัติไว้ใน config")
+            return
+        if self._halted:
             return
 
         campaign = await self.ads.create_campaign(
@@ -105,7 +109,9 @@ class AdsAgent(Agent):
         )
         self.say(
             f"ขึ้นแอด {cfg.campaign_type} งบ {cfg.starting_budget:.0f}฿ "
-            f"(แคมเปญ {campaign}) — {reason}"
+            f"(แคมเปญ {campaign}) — {reason} | "
+            f"เพดานค่าแอด {self._max_cpa():.0f}฿/ออเดอร์ "
+            f"จากค่าคอม {self._commission():.0f}฿/ชิ้น"
         )
 
     async def _pause(self, reason: str) -> None:
@@ -118,7 +124,9 @@ class AdsAgent(Agent):
     # ---------------- งานตามรอบ ----------------
 
     async def tick(self) -> None:
-        if not self.settings.ads.enabled or not self.state.ads.campaign_id:
+        if not self.settings.ads.enabled or self._halted:
+            return
+        if not self.state.ads.campaign_id:
             return
 
         metrics = await self.ads.fetch_metrics(self.state.ads.campaign_id)
@@ -142,10 +150,43 @@ class AdsAgent(Agent):
         )
         await self._decide()
 
+    # ---------------- เพดานที่คิดจากค่าคอมจริง ----------------
+
+    def _commission(self) -> float:
+        """ค่าคอมเฉลี่ยต่อชิ้นของสินค้าที่ขายอยู่จริงในไลฟ์นี้"""
+        return self.state.baskets.blended_commission(self.settings.ads.default_commission)
+
+    def _max_cpa(self) -> float:
+        """จ่ายค่าแอดต่อออเดอร์ได้สูงสุดเท่าไหร่ถึงจะยังไม่ขาดทุน"""
+        cfg = self.settings.ads
+        if cfg.max_cpa_override > 0:
+            return cfg.max_cpa_override
+        return self._commission() * cfg.cpa_ceiling_ratio
+
+    def _target_cpa(self) -> float:
+        cfg = self.settings.ads
+        if cfg.max_cpa_override > 0:
+            return cfg.max_cpa_override * (cfg.cpa_target_ratio / cfg.cpa_ceiling_ratio)
+        return self._commission() * cfg.cpa_target_ratio
+
+    def _net_profit(self) -> float:
+        """กำไรจริงของไลฟ์นี้ = ค่าคอมที่ได้ - ค่าแอดที่จ่าย
+
+        ยอดขายไม่เกี่ยว เพราะนายหน้าไม่ได้เงินจากยอดขาย ได้จากค่าคอม
+        """
+        return self.state.baskets.commission_earned() - self.state.ads.spend
+
     async def _decide(self) -> None:
-        """ค่าแอดต่อออเดอร์แพงเกินรับได้หรือยัง"""
+        """ค่าแอดต่อออเดอร์แพงเกินค่าคอมที่ได้หรือยัง"""
         cfg = self.settings.ads
         ads = self.state.ads
+
+        # เบรกฉุกเฉิน — ตรวจก่อนทุกอย่าง ไม่มีช่วงผ่อนผัน
+        # ขาดทุนสะสมถึงเพดานแล้วต้องหยุด ไม่ว่าเหตุผลอื่นจะว่ายังไง
+        net = self._net_profit()
+        if net <= -cfg.max_loss_baht:
+            await self._emergency_stop(net)
+            return
 
         # แอดเพิ่งขึ้น ตัวเลขยังไม่นิ่ง
         if (time.time() - self._launched_at) / 60.0 < cfg.grace_minutes_after_launch:
@@ -153,24 +194,62 @@ class AdsAgent(Agent):
         if ads.spend < cfg.min_spend_before_judging:
             return
 
+        max_cpa = self._max_cpa()
+        commission = self._commission()
+
         # ใช้เงินไปเยอะแล้วแต่ยังไม่มีออเดอร์เลย = แพงที่สุดเท่าที่จะเป็นไปได้
         if ads.orders < cfg.min_purchases_before_judging:
-            if ads.spend >= cfg.max_cpa * cfg.min_purchases_before_judging:
+            if ads.spend >= max_cpa * cfg.min_purchases_before_judging:
                 await self._replace(
                     f"ใช้ไป {ads.spend:.0f}฿ ได้แค่ {ads.orders} ออเดอร์ "
-                    f"(ต้นทุนต่อออเดอร์เกิน {cfg.max_cpa:.0f}฿ แน่นอน)"
+                    f"(ยังไงก็เกินเพดาน {max_cpa:.0f}฿ จากค่าคอม {commission:.0f}฿)"
                 )
             return
 
-        if ads.cpa > cfg.max_cpa:
+        if ads.cpa > max_cpa:
             await self._replace(
-                f"ต้นทุนต่อการซื้อ {ads.cpa:.0f}฿ เกินเพดาน {cfg.max_cpa:.0f}฿ "
-                f"(ใช้ไป {ads.spend:.0f}฿ / {ads.orders} ออเดอร์)"
+                f"ค่าแอด {ads.cpa:.0f}฿/ออเดอร์ เกินเพดาน {max_cpa:.0f}฿ "
+                f"(ค่าคอมได้แค่ {commission:.0f}฿/ชิ้น = ขาดทุน "
+                f"{ads.cpa - commission:.0f}฿ ต่อออเดอร์)"
             )
-        elif ads.cpa <= cfg.target_cpa and ads.budget < cfg.max_budget:
+        elif ads.cpa <= self._target_cpa() and ads.budget < cfg.max_budget:
             await self._scale(
-                f"ต้นทุนต่อการซื้อ {ads.cpa:.0f}฿ ถูกกว่าเป้า {cfg.target_cpa:.0f}฿"
+                f"ค่าแอด {ads.cpa:.0f}฿/ออเดอร์ จากค่าคอม {commission:.0f}฿ "
+                f"— เหลือกำไร {commission - ads.cpa:.0f}฿ ต่อออเดอร์"
             )
+
+    async def _emergency_stop(self, net: float) -> None:
+        """หยุดยิงแอดถาวรในไลฟ์นี้ — ขาดทุนสะสมถึงเพดานแล้ว"""
+        if self._halted:
+            return
+        self._halted = True
+        campaign = self.state.ads.campaign_id
+        if campaign:
+            await self.ads.pause_campaign(campaign)
+        self.state.ads.campaign_id = ""
+        self.state.ads.last_action = "halted"
+        self.emit(
+            AdAction(
+                action="halt",
+                campaign_id=campaign,
+                reason=f"ขาดทุนสะสม {abs(net):.0f}฿",
+            )
+        )
+        self.say(
+            f"หยุดยิงแอดทั้งหมด — ขาดทุนสะสม {abs(net):.0f}฿ "
+            f"(ค่าคอมได้ {self.state.baskets.commission_earned():.0f}฿ "
+            f"ค่าแอดจ่าย {self.state.ads.spend:.0f}฿)",
+            "error",
+        )
+        self.notify(
+            "หยุดยิงแอดฉุกเฉิน — ขาดทุนถึงเพดาน",
+            f"ขาดทุนสะสมในไลฟ์นี้ {abs(net):.0f}฿ ถึงเพดานที่ตั้งไว้\n"
+            f"ค่าคอมที่ได้ {self.state.baskets.commission_earned():.0f}฿ "
+            f"แต่จ่ายค่าแอดไป {self.state.ads.spend:.0f}฿\n"
+            "ไลฟ์ยังรันต่อแบบไม่มีแอด (ยอด organic ยังเข้าได้)",
+            Severity.CRITICAL,
+            needs_human=True,
+        )
 
     async def _scale(self, reason: str) -> None:
         cfg = self.settings.ads

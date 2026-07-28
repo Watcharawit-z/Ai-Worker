@@ -122,10 +122,15 @@ class Agent(ABC):
         body: str,
         severity: Severity = Severity.INFO,
         needs_human: bool = False,
+        image_path: str = "",
     ) -> None:
         """ส่งเรื่องถึงคน (เจ้าของร้าน/หัวหน้ากะ)"""
         self.emit(
             Notification(
-                title=title, body=body, severity=severity, needs_human=needs_human
+                title=title,
+                body=body,
+                severity=severity,
+                needs_human=needs_human,
+                image_path=image_path,
             )
         )

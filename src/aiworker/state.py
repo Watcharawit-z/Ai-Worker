@@ -24,6 +24,9 @@ class StreamStatus:
     segment_started_at: float = field(default_factory=time.time)
     """เวลาที่เริ่มเล่นท่อนปัจจุบัน — ใช้ตรวจว่าค่าจากตัวเล่นเป็นของเก่าค้างหรือเปล่า"""
 
+    loop_count: int = 0
+    """เล่นคลิปวนไปกี่รอบแล้วในกะนี้ — คลิป 30 นาทีวน 8 ชม. = 16 รอบ"""
+
     last_update: float = field(default_factory=time.time)
     last_alert: str = ""
 
@@ -37,6 +40,7 @@ class StreamStatus:
             "current_segment": self.current_segment,
             "seconds_remaining": round(self.seconds_remaining, 1),
             "stale_seconds": round(time.time() - self.last_update, 1),
+            "loop_count": self.loop_count,
             "last_alert": self.last_alert,
         }
 

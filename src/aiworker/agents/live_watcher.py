@@ -189,6 +189,10 @@ class LiveWatcherAgent(Agent):
             self.say(f"สั่งเล่นท่อน {segment.id} ไม่สำเร็จ", "error")
             return
 
+        if previous == segment.id:
+            # คลิปเดิมเล่นซ้ำ = วนอีกรอบ (กรณีมีไฟล์เดียวเล่นวนทั้งกะ)
+            self.state.stream.loop_count += 1
+
         self._segment_started_at = time.time()
         self.state.stream.current_segment = segment.id
         self.state.stream.segment_started_at = self._segment_started_at
@@ -197,8 +201,16 @@ class LiveWatcherAgent(Agent):
         self.emit(
             SegmentChanged(from_segment=previous, to_segment=segment.id, reason=reason)
         )
-        verb = "สลับ" if force else "ต่อ"
-        self.say(f"{verb}ไปท่อน {segment.id} ({segment.duration_seconds:.0f} วิ) — {reason}")
+        if previous == segment.id:
+            self.say(
+                f"เล่น {segment.id} วนรอบที่ {self.state.stream.loop_count + 1} "
+                f"({segment.duration_seconds / 60:.0f} นาที) — {reason}"
+            )
+        else:
+            verb = "สลับ" if force else "ต่อ"
+            self.say(
+                f"{verb}ไปท่อน {segment.id} ({segment.duration_seconds:.0f} วิ) — {reason}"
+            )
 
     # ---------------- ตัวช่วย ----------------
 

@@ -42,8 +42,10 @@ ads:
   starting_budget: 300
   max_budget: 2000
   scale_step: 1.3
-  max_cpa: 120
-  target_cpa: 70
+  cpa_ceiling_ratio: 0.6
+  cpa_target_ratio: 0.35
+  default_commission: 20
+  max_loss_baht: 300                # ปกติ 500
   min_spend_before_judging: 10      # ปกติ 150
   min_purchases_before_judging: 1   # ปกติ 2
   grace_minutes_after_launch: 0.3   # ปกติ 20

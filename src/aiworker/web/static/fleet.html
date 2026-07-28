@@ -79,10 +79,12 @@ async function refresh() {
       : '';
 
   document.getElementById('totals').innerHTML = [
-    stat('ยอดขายรวม', fmt(t.revenue) + ' ฿'),
-    stat('ออเดอร์รวม', fmt(t.orders)),
-    stat('ค่าแอดรวม', fmt(t.ad_spend) + ' ฿'),
+    stat('กำไรจริงรวม', `<span style="color:${(t.net_profit || 0) >= 0 ? 'var(--ok)' : 'var(--bad)'}">` +
+      `${(t.net_profit || 0) >= 0 ? '+' : ''}${fmt(t.net_profit)} ฿</span>`),
+    stat('ค่าคอมที่ได้', fmt(t.commission) + ' ฿'),
+    stat('ค่าแอดที่จ่าย', fmt(t.ad_spend) + ' ฿'),
     stat('ต้นทุน/ออเดอร์', t.cpa ? fmt(t.cpa) + ' ฿' : '—'),
+    stat('ยอดขายรวม', fmt(t.revenue) + ' ฿'),
     stat('จิ๊กซอว์ที่พลาด', fmt(t.missed_challenges)),
     stat('คอมเมนท์รวม', fmt(t.comments)),
   ].join('');
@@ -119,7 +121,8 @@ function card(m) {
     ['ปักตะกร้าอยู่', pinned ? esc(pinned.name) : '—'],
     ['คนดู', fmt(stream.viewers)],
     ['ยอดขาย', `${fmt(b.total_revenue)} ฿ / ${fmt(b.total_orders)} ออเดอร์`],
-    ['ค่าแอด', `${fmt(ads.spend)} ฿`],
+    ['ค่าคอม - ค่าแอด', `${fmt(b.commission_earned)} - ${fmt(ads.spend)} = ` +
+      `${fmt((b.commission_earned || 0) - (ads.spend || 0))} ฿`],
     ['ต้นทุน/ออเดอร์', ads.cpa ? `${fmt(ads.cpa)} ฿` : '—'],
     ['จิ๊กซอว์', `ทัน ${fmt(v.solved)}/${fmt(v.total)} · พลาด ${fmt(v.missed)}`],
     ['คอมเมนท์', `${fmt(c.received)} ตอบ ${fmt(c.replied)}`],
