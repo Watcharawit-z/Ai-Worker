@@ -39,9 +39,14 @@ def build_comment_source(settings: Settings) -> Any:
 
 
 def build_comment_sender(settings: Settings) -> Any:
-    kind = settings.adapters.comments
+    kind = settings.adapters.comment_sender or settings.adapters.comments
+    if kind == "browser":
+        # TikTok ไม่เปิด API ให้ส่งคอมเมนท์ แต่พิมพ์ในหน้าเว็บได้
+        from .browser import BrowserCommentSender
+
+        return BrowserCommentSender(**settings.adapters.options.get("browser", {}))
     if kind == "tiktok":
-        # TikTok ไม่เปิดให้ส่งคอมเมนท์ผ่าน API — เข้าคิวให้คนกดส่งแทน
+        # ยังไม่ได้ต่อเบราว์เซอร์ — เข้าคิวให้คนกดส่งแทน
         from .tiktok_comments import ReviewQueueSender
 
         return ReviewQueueSender()
@@ -50,6 +55,10 @@ def build_comment_sender(settings: Settings) -> Any:
 
 def build_shop(settings: Settings) -> Any:
     kind = settings.adapters.shop
+    if kind == "browser":
+        from .browser import BrowserShop
+
+        return BrowserShop(**settings.adapters.options.get("browser", {}))
     if kind != "mock":
         log.warning(
             "shop adapter '%s' ยังไม่ได้เขียน — ใช้ mock ไปก่อน "

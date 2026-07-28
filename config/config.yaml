@@ -84,12 +84,26 @@ stream:
   avoid_repeat_within: 3          # ห้ามซ้ำท่อนเดิมภายในกี่ท่อนล่าสุด
 
 adapters:
-  comments: mock      # mock | tiktok
-  player: mock        # mock | obs
-  shop: mock
+  comments: mock          # อ่านคอมเมนท์: mock | tiktok
+  comment_sender: ""      # ส่งคำตอบ: ว่าง = ตามค่า comments | browser | tiktok(เข้าคิวให้คนกด)
+  player: mock            # mock | obs
+  shop: mock              # mock | browser (ปักตะกร้าด้วยการกดในหน้าเว็บ)
   ads: mock
-  notify: [console]   # console | telegram | webhook (ใส่หลายอันได้)
+  notify: [console]       # console | telegram | webhook (ใส่หลายอันได้)
   options:
+    # ปักตะกร้า + ตอบคอมเมนท์ผ่านเบราว์เซอร์ — ดู docs/BROWSER.md
+    # selectors ต้องเก็บเองด้วย python scripts/calibrate_browser.py
+    # ปล่อยว่างไว้ = ระบบไม่กดอะไรเลย แล้วบอกให้คนทำเอง (ไม่แกล้งทำเป็นสำเร็จ)
+    browser:
+      console_url: ""         # URL หน้าที่ปักตะกร้าได้
+      profile_dir: "runtime/browser-profile"   # ล็อกอินค้างไว้ที่นี่
+      headless: false         # ต้องเห็นหน้าต่างไว้ จะได้เข้าไปเลื่อนจิ๊กซอว์ทัน
+      dry_run: true           # true = ซ้อม หาปุ่มแต่ไม่กด — เปลี่ยนเป็น false เมื่อมั่นใจแล้ว
+      timeout_ms: 8000
+      slow_mo_ms: 120         # หน่วงระหว่างการกด ให้เหมือนคนกดมากขึ้น
+      min_send_interval_seconds: 3   # ส่งคอมเมนท์ถี่กว่านี้ไม่ได้
+      mention_prefix: true    # ขึ้นต้นคำตอบด้วย @ชื่อคนถาม
+      selectors: {}           # ← เก็บมาจาก calibrate_browser.py
     obs:
       host: "localhost"
       port: 4455

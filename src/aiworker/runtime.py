@@ -95,6 +95,7 @@ class Shift:
         self._preflight()
 
         await self.comment_source.connect()
+        await self.comment_sender.connect()
         self.comment_source.set_handler(self._on_raw_comment)
         self._tasks.append(
             asyncio.create_task(self.comment_source.run(), name="comment-source")
@@ -119,6 +120,7 @@ class Shift:
         for agent in reversed(self.agents):
             await agent.stop()
         await self.comment_source.disconnect()
+        await self.comment_sender.disconnect()
         await self.llm.aclose()
         log.info("ปิดกะเรียบร้อย — %s", self.summary_line())
 
@@ -173,12 +175,31 @@ class Shift:
                 "เหลือเฉพาะกฎอัตโนมัติ (เฝ้าไลฟ์/ตะกร้า/แอด/คำต้องห้าม ยังทำงานปกติ)"
             )
 
+        self._preflight_browser()
+
         # เตือนถ้าคลิปมีไม่พอสำหรับความยาวกะ
         total_minutes = self.state.playlist.total_duration() / 60.0
         if 0 < total_minutes < 60:
             log.warning(
                 "คลิปทั้งหมดรวมกันแค่ %.0f นาที — จะวนซ้ำเร็วมาก คนดูจับได้ง่าย",
                 total_minutes,
+            )
+
+    def _preflight_browser(self) -> None:
+        """เตือนสองเรื่องที่คนลืมบ่อยตอนต่อเบราว์เซอร์"""
+        adapters = self.settings.adapters
+        if "browser" not in (adapters.shop, adapters.comment_sender):
+            return
+
+        opts = adapters.options.get("browser", {}) or {}
+        if opts.get("dry_run", True):
+            log.warning(
+                "เบราว์เซอร์อยู่ในโหมดซ้อม (dry_run: true) — จะหาปุ่มให้ดูในล็อกแต่ยังไม่กดจริง"
+            )
+        if not (opts.get("selectors") or {}).get("captcha"):
+            log.warning(
+                "ยังไม่ได้ตั้ง browser.selectors.captcha — ระบบจะไม่รู้ว่าต้องหยุดมือ"
+                "ตอนจิ๊กซอว์เด้ง รัน python scripts/calibrate_browser.py ตอนที่ปริศนากำลังโผล่"
             )
 
     # ---------------- สรุป ----------------

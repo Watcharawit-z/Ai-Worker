@@ -44,6 +44,7 @@ LONG_CLIP = [
 class FakeShop:
     def __init__(self) -> None:
         self.pins: list[str] = []
+        self.names: list[str] = []
         self.sales = SalesSnapshot(orders=0, revenue=0.0, stock=None)
         self.fail_next = False
 
@@ -53,7 +54,8 @@ class FakeShop:
     async def disconnect(self) -> None:
         pass
 
-    async def pin_basket(self, basket_id: str, sku: str) -> bool:
+    async def pin_basket(self, basket_id: str, sku: str, name: str = "") -> bool:
+        self.names.append(name)
         if self.fail_next:
             self.fail_next = False
             return False

@@ -112,6 +112,28 @@ CPA ≤ 35% ของค่าคอม → คูณงบ 1.3 เท่า
 
 ---
 
+## ปักตะกร้าและตอบคอมเมนท์ — กดในเบราว์เซอร์ให้
+
+TikTok ไม่เปิด API ให้ทั้งสองอย่าง แต่กดได้ในหน้าเว็บ
+ระบบจึงเปิด Chromium ค้างไว้บานเดียว ล็อกอินค้างในโปรไฟล์ แล้วกดปุ่มเดิมที่คนเคยกด
+
+```yaml
+adapters:
+  shop: browser            # ปักตะกร้า
+  comment_sender: browser  # ส่งคำตอบกลับ
+```
+
+- **จิ๊กซอว์โผล่ = หยุดมือทันที** ไม่แตะอะไรในหน้านั้นเลยจนกว่าคนจะเลื่อนเสร็จ
+- **`dry_run: true` เป็นค่าเริ่มต้น** — หาปุ่มให้ดูในล็อกก่อน ยังไม่กดจริง
+- **หาปุ่มไม่เจอ = รายงานว่าไม่สำเร็จ** ไม่แกล้งทำเป็นสำเร็จแล้วปักผิดทั้งไลฟ์
+- ล็อกอินอยู่ในโปรไฟล์เบราว์เซอร์ ไม่มีรหัสผ่านในไฟล์ config
+
+ต้อง calibrate ก่อนใช้: `python scripts/calibrate_browser.py`
+(กด Alt ค้าง + คลิกที่ปุ่ม — ดู [`docs/BROWSER.md`](docs/BROWSER.md))
+TikTok เปลี่ยนหน้าเว็บเมื่อไหร่ต้อง calibrate ใหม่
+
+---
+
 ## การละเมิด — แยกว่าใครเป็นคนผิด
 
 | ใครพูด | ระบบทำอะไร |
@@ -180,8 +202,9 @@ python -m aiworker --check
 1. **ยังต้องมีคน** ระบบส่งงานที่ตัดสินใจเองไม่ได้กลับมาให้คน
    เป้าหมายคือคนหนึ่งคนดูแล 5 เครื่องได้ ไม่ใช่ไม่มีคนเลย
 2. **จิ๊กซอว์ต้องคนเลื่อน** ระบบปลุกให้ทันเท่านั้น
-3. **ส่งคอมเมนท์กลับต้องคนกด** TikTok ไม่เปิด API ให้ส่ง
-   ระบบร่างคำตอบไว้ให้คัดลอก — งานหนักคือคิดว่าจะตอบอะไร ไม่ใช่การพิมพ์
+3. **ปักตะกร้า/ตอบคอมเมนท์ต้องผ่านเบราว์เซอร์** TikTok ไม่เปิด API ให้ทั้งสองอย่าง
+   ระบบกดในหน้าเว็บให้แทน แต่ต้อง calibrate ก่อนและต้อง calibrate ใหม่เมื่อ TikTok
+   เปลี่ยนหน้าตาเว็บ — ดู [docs/BROWSER.md](docs/BROWSER.md)
 4. **ระบบร้านและแอดยังเป็นข้อมูลจำลอง** ยอดขายและ CPA บน dashboard
    ยังไม่ใช่ของจริงจนกว่าจะเขียน adapter ต่อ TikTok Shop / Ads API
    (โครง interface รอไว้แล้วใน `adapters/base.py`)
@@ -200,13 +223,13 @@ src/aiworker/
 ├── llm.py             ตัวห่อการเรียก Claude
 ├── agents/            พนักงาน AI แต่ละคน
 ├── domain/            ตรรกะล้วน — cues, basket, verification, compliance
-├── adapters/          จุดต่อโลกจริง (mock / OBS / TikTok / screen)
+├── adapters/          จุดต่อโลกจริง (mock / OBS / TikTok / browser / screen)
 ├── fleet/             hub + reporter สำหรับหลายเครื่อง
 └── web/               dashboard เครื่องเดียว + จอรวม
 ```
 
 ```bash
-python -m pytest tests -q     # 69 เทส
+python -m pytest tests -q     # 80 เทส
 ```
 
-เอกสาร: [SETUP](docs/SETUP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [JIGSAW](docs/JIGSAW.md) · [FLEET](docs/FLEET.md)
+เอกสาร: [SETUP](docs/SETUP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [BROWSER](docs/BROWSER.md) · [JIGSAW](docs/JIGSAW.md) · [FLEET](docs/FLEET.md)

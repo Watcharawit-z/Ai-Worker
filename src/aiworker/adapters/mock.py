@@ -174,7 +174,7 @@ class MockShop:
     async def disconnect(self) -> None:
         pass
 
-    async def pin_basket(self, basket_id: str, sku: str) -> bool:
+    async def pin_basket(self, basket_id: str, sku: str, name: str = "") -> bool:
         self._pinned = basket_id
         self._pinned_at = time.time()
         self._sales.setdefault(basket_id, {"orders": 0.0, "revenue": 0.0})

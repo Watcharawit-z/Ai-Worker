@@ -118,7 +118,7 @@ class BasketAgent(Agent):
             self._warn_missing(wanted_sku, segment.id, position)
             return
 
-        ok = await self.shop.pin_basket(basket.id, basket.sku)
+        ok = await self.shop.pin_basket(basket.id, basket.sku, basket.name)
         if not ok:
             self.say(f"ปักตะกร้า '{basket.name}' ไม่สำเร็จ", "error")
             return

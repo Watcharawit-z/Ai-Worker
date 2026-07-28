@@ -71,8 +71,11 @@ class CommentSender(Adapter, Protocol):
 class ShopAdapter(Adapter, Protocol):
     """ระบบร้าน — ปักตะกร้าขึ้นแสดงและอ่านยอดขาย"""
 
-    async def pin_basket(self, basket_id: str, sku: str) -> bool:
-        """ปักตะกร้าใบนี้ขึ้นแสดงในไลฟ์ (ตะกร้าใบอื่นยังอยู่ในไลฟ์เหมือนเดิม)"""
+    async def pin_basket(self, basket_id: str, sku: str, name: str = "") -> bool:
+        """ปักตะกร้าใบนี้ขึ้นแสดงในไลฟ์ (ตะกร้าใบอื่นยังอยู่ในไลฟ์เหมือนเดิม)
+
+        name ใช้เผื่อหน้าเว็บไม่มี SKU ให้เกาะ ต้องไล่หาจากชื่อสินค้าแทน
+        """
         ...
 
     async def fetch_sales(self, basket_id: str) -> SalesSnapshot | None: ...

@@ -137,6 +137,10 @@ class StreamSettings:
 @dataclass(slots=True)
 class AdapterSettings:
     comments: str = "mock"
+    comment_sender: str = ""
+    """ช่องทางส่งคำตอบกลับ — เว้นว่าง = ตามค่า comments
+    browser = พิมพ์ในหน้าเว็บให้เลย | tiktok = เข้าคิวให้คนกดส่ง"""
+
     player: str = "mock"
     shop: str = "mock"
     ads: str = "mock"
